@@ -15,7 +15,7 @@ st.set_page_config(layout="wide")
 # ==============================================================================
 #                 KONFIGURASI PATH MODEL DAN PARAMETER
 # ==============================================================================
-# PENTING: MENGGUNAKAN PATH ABSOLUT YANG KUAT
+# MENGGUNAKAN PATH ABSOLUT YANG KUAT
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 MODEL_PATH_ABSOLUTE = os.path.join(BASE_DIR, "models", "cataract_model_best.keras")
 LABELS_PATH_ABSOLUTE = os.path.join(BASE_DIR, "models", "labels.json")
@@ -28,11 +28,19 @@ EMBED_DIM = 576
 
 
 # --- Custom CSS for Styling ---
-# [Kode CSS tetap sama]
 def local_css(file_name):
-    with open(file_name) as f:
-        st.markdown(f"<style>{f.read()}</style>", unsafe_allow_html=True)
+    # Memastikan file style.css ada sebelum dibaca
+    if os.path.exists(file_name):
+        with open(file_name) as f:
+            st.markdown(f"<style>{f.read()}</style>", unsafe_allow_html=True)
+    else:
+        # Fallback CSS
+        st.markdown(
+            "<style> .main-header {text-align: center; font-size: 2.5em;} </style>",
+            unsafe_allow_html=True
+        )
 
+# Membuat file CSS temporer
 with open("style.css", "w") as f:
     f.write(
         """
@@ -67,7 +75,7 @@ class TransformerBlock(keras.layers.Layer):
         self.rate = rate
         self.embed_dim = EMBED_DIM
 
-        # Inisialisasi Lapisan Internal
+        # Inisialisasi Lapisan Internal (Dimensi output 576)
         self.att = keras.layers.MultiHeadAttention(num_heads=num_heads, key_dim=self.embed_dim) 
         self.ffn = keras.Sequential(
             [keras.layers.Dense(ff_dim, activation="relu"), 
@@ -79,13 +87,10 @@ class TransformerBlock(keras.layers.Layer):
         self.dropout1 = keras.layers.Dropout(rate)
         self.dropout2 = keras.layers.Dropout(rate)
 
-    # METODE BUILD KRITIS DENGAN PEMBANGUNAN EKSPLISIT
+    # METODE BUILD KRITIS: Membangun sub-lapisan secara eksplisit
     def build(self, input_shape):
-        # input_shape: (None, 49, 576). Kita gunakan shape ini untuk build.
         embed_shape = (input_shape[0], input_shape[1], self.embed_dim)
 
-        # Membangun semua sub-lapisan (MultiHeadAttention, Sequential, LayerNormalization)
-        # secara eksplisit untuk memaksa alokasi variabel (bobot).
         self.att.build(embed_shape) 
         self.ffn.build(embed_shape) 
         self.layernorm1.build(embed_shape)
@@ -94,7 +99,7 @@ class TransformerBlock(keras.layers.Layer):
         super().build(input_shape)
 
     def compute_output_shape(self, input_shape):
-        """Memastikan Keras mengetahui shape output (penting untuk deserialisasi)."""
+        """Memastikan Keras mengetahui shape output."""
         return input_shape
 
     def call(self, inputs, training=False):
@@ -126,9 +131,9 @@ class TransformerBlock(keras.layers.Layer):
 
 @st.cache_resource
 def load_model():
-    model_path = MODEL_PATH_ABSOLUTE # MENGGUNAKAN PATH ABSOLUT
+    model_path = MODEL_PATH_ABSOLUTE 
     
-    # --- DEBUGGING PATH (Akan memberi tahu jika file benar-benar hilang) ---
+    # --- DEBUGGING PATH ---
     if not os.path.exists(model_path):
         st.error(f"❌ DEBUGGING GAGAL: File model tidak ditemukan di path: {model_path}")
         try:
@@ -151,7 +156,7 @@ def load_model():
         st.exception(f"❌ Error saat memuat model: {e}")
         st.error(
             "SOLUSI: Error Keras ini (jika file ditemukan) berarti ada ketidakcocokan versi TensorFlow. "
-            "Harap periksa dan perbarui `requirements.txt` Anda."
+            "Pastikan `requirements.txt` menggunakan versi yang benar."
         )
         return None
 
@@ -170,8 +175,11 @@ except Exception as e:
     labels = {"0": "normal", "1": "cataract"}
 
 
-# --- [Bagian Header, Disclaimer, Panduan Penggunaan, dan Logika Prediksi] ---
+# ==============================================================================
+#                 ANTARMUKA STREAMLIT
+# ==============================================================================
 
+# --- Header Section ---
 st.markdown(
     "<h1 class='main-header'>👁️ <b>Deteksi Katarak Berbasis AI</b></h1>",
     unsafe_allow_html=True,
@@ -181,6 +189,7 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
+# --- Disclaimer Section ---
 st.markdown(
     """
 <div class="disclaimer">
@@ -190,6 +199,7 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
+# --- Usage Guide Section ---
 st.markdown("## 📚 Panduan Penggunaan", unsafe_allow_html=True)
 st.write(
     """Aplikasi ini dirancang untuk mendeteksi indikasi katarak dari gambar mata. Ikuti langkah-langkah mudah di bawah ini:
@@ -201,6 +211,7 @@ st.write(
 """
 )
 
+# --- Main Columns for Upload and Information ---
 col1, col2 = st.columns(2)
 
 with col1:

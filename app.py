@@ -1,10 +1,9 @@
 import os
-
 import streamlit as st
 import streamlit.components.v1 as components
 import time
-
 import tensorflow as tf
+from tensorflow import keras # Diperlukan untuk dekorator dan kelas dasar
 from PIL import Image
 import numpy as np
 import json
@@ -16,9 +15,7 @@ st.set_page_config(layout="wide")
 
 # --- Konfigurasi Ambang Batas dan Label ---
 # Ambang batas kepercayaan (dalam skala 0.0 hingga 1.0).
-# Jika kepercayaan tertinggi model di bawah nilai ini, gambar dianggap 'Tidak Valid/Tidak Relevan'.
 CONFIDENCE_THRESHOLD = 0.85
-
 
 # --- Custom CSS for Styling ---
 def local_css(file_name):
@@ -122,21 +119,81 @@ with open("style.css", "w") as f:
     )
 local_css("style.css")
 
-# Load model and labels
+# ==============================================================================
+#                 PENTING: DEFINISI KELAS KUSTOM (TransformerBlock)
+#
+# Error Anda terjadi karena Keras tidak dapat menemukan kelas ini.
+# Mendekorasi dan menyertakannya di sini akan menyelesaikan masalah.
+# PASTIKAN PARAMETER INI SAMA DENGAN MODEL YANG ANDA LATIH.
+# ==============================================================================
 
+@keras.saving.register_keras_serializable()
+class TransformerBlock(keras.layers.Layer):
+    def __init__(self, num_heads, ff_dim, rate=0.1, **kwargs):
+        super().__init__(**kwargs)
+        self.num_heads = num_heads
+        self.ff_dim = ff_dim
+        self.rate = rate
+        
+        # Inisialisasi Layer
+        self.att = keras.layers.MultiHeadAttention(num_heads=num_heads, key_dim=ff_dim)
+        self.ffn = keras.Sequential(
+            [keras.layers.Dense(ff_dim, activation="relu"), keras.layers.Dense(ff_dim)]
+        )
+        self.layernorm1 = keras.layers.LayerNormalization(epsilon=1e-6)
+        self.layernorm2 = keras.layers.LayerNormalization(epsilon=1e-6)
+        self.dropout1 = keras.layers.Dropout(rate)
+        self.dropout2 = keras.layers.Dropout(rate)
+    
+    def call(self, inputs, training=False):
+        # Multi-Head Attention
+        attn_output = self.att(inputs, inputs)
+        attn_output = self.dropout1(attn_output, training=training)
+        out1 = self.layernorm1(inputs + attn_output)
+        
+        # Feed Forward
+        ffn_output = self.ffn(out1)
+        ffn_output = self.dropout2(ffn_output, training=training)
+        
+        # Add & Norm
+        return self.layernorm2(out1 + ffn_output)
+
+    def get_config(self):
+        config = super().get_config()
+        config.update({
+            "num_heads": self.num_heads,
+            "ff_dim": self.ff_dim,
+            "rate": self.rate,
+        })
+        return config
+
+    # Tidak perlu from_config jika menggunakan Keras versi terbaru, 
+    # tetapi disertakan untuk kompatibilitas yang lebih baik.
+    @classmethod
+    def from_config(cls, config):
+        return cls(**config)
+
+# ==============================================================================
+#                      FUNGSI LOAD MODEL DENGAN CUSTOM OBJECTS
+# ==============================================================================
 
 @st.cache_resource
 def load_model():
     # Ganti path model sesuai kebutuhan, diasumsikan ada di path yang sama.
-    # PENTING: Pastikan file 'cataract_model_best.keras' benar-benar ada di lokasi ini
     try:
         model_path = "models/cataract_model_best.keras"
-        model = tf.keras.models.load_model(model_path)
+        
+        # PENTING: Meneruskan kelas kustom ke load_model
+        model = tf.keras.models.load_model(
+            model_path, 
+            custom_objects={"TransformerBlock": TransformerBlock}
+        )
         return model
     except FileNotFoundError:
         st.error(f"Error: Model file tidak ditemukan di path: {model_path}")
         return None
     except Exception as e:
+        # Error yang akan Anda temui sebelumnya akan muncul di sini jika TransformerBlock tidak didefinisikan/didaftarkan
         st.error(f"Error saat memuat model: {e}")
         return None
 
@@ -215,7 +272,8 @@ with col1:
                     )
                     img_array = np.array(img)
 
-                    # Preprocessing sesuai model MobileNetV3
+                    # Preprocessing sesuai model (asumsi Anda menggunakan MobileNetV3 
+                    # karena ada baris kode ini di kode asli Anda)
                     img_array = tf.keras.applications.mobilenet_v3.preprocess_input(
                         img_array
                     )

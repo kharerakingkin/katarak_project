@@ -10,11 +10,9 @@ import json
 import io
 
 # Mengatur layout halaman ke mode "wide" agar aplikasi menggunakan seluruh lebar layar.
-# PERHATIAN: Perintah ini harus menjadi perintah Streamlit pertama di skrip.
 st.set_page_config(layout="wide")
 
 # --- Konfigurasi Ambang Batas dan Label ---
-# Ambang batas kepercayaan (dalam skala 0.0 hingga 1.0).
 CONFIDENCE_THRESHOLD = 0.85
 
 # --- Custom CSS for Styling ---
@@ -22,112 +20,35 @@ def local_css(file_name):
     with open(file_name) as f:
         st.markdown(f"<style>{f.read()}</style>", unsafe_allow_html=True)
 
-
 # Membuat file CSS temporer
 with open("style.css", "w") as f:
     f.write(
         """
-    body {
-        font-family: 'Inter', sans-serif;
-    }
-    .main-header {
-        text-align: center;
-        margin-bottom: 0.5em;
-        font-size: 2.5em;
-        animation: slideInUp 0.8s ease-out;
-    }
-    .subheader {
-        text-align: center;
-        font-size: 1.2em;
-        color: #888;
-        margin-bottom: 2em;
-        animation: slideInUp 1s ease-out;
-    }
-    .disclaimer {
-        /* Warna latar belakang netral dan warna teks yang kontras */
-        background-color: #fffae6; /* Warna kuning muda */
-        padding: 15px;
-        border-left: 5px solid #ffc107; /* Warna peringatan (kuning) */
-        border-radius: 8px;
-        margin-bottom: 2em;
-        box-shadow: 0 4px 6px rgba(0,0,0,0.1);
-        color: #664d03; /* Warna teks gelap agar terlihat jelas */
-        animation: fadeIn 1.2s ease-in;
-    }
-    .disclaimer b {
-        color: #ff9800; /* Warna teks peringatan yang lebih terang */
-    }
-    .section-header {
-        font-size: 1.8em;
-        margin-top: 1.5em;
-        margin-bottom: 0.8em;
-        animation: fadeIn 1.5s ease-in;
-    }
-    /* Menargetkan tombol Streamlit secara lebih spesifik */
-    div.stButton > button {
-        width: 100%;
-        padding: 10px;
-        border-radius: 8px;
-        font-size: 1.1em;
-        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-        transition: all 0.3s ease;
-        animation: pulse 1.5s infinite; /* Animasi berjalan terus-menerus */
-    }
-    div.stButton > button:hover {
-        transform: translateY(-2px);
-        box-shadow: 0 4px 8px rgba(0,0,0,0.2);
-    }
-    /* Animasi untuk hasil prediksi */
-    .stAlert {
-        animation: bounceIn 0.8s ease-out;
-    }
-    @media (max-width: 768px) {
-        .main-header {
-            font-size: 2em;
-        }
-        .subheader {
-            font-size: 1em;
-        }
-    }
-    /* Animasi */
-    @keyframes pulse {
-        0% { transform: scale(1); }
-        50% { transform: scale(1.02); }
-        100% { transform: scale(1); }
-    }
-    @keyframes fadeIn {
-        0% { opacity: 0; }
-        100% { opacity: 1; }
-    }
-    @keyframes bounceIn {
-        0% { transform: scale(0.3); opacity: 0; }
-        50% { transform: scale(1.1); opacity: 1; }
-        80% { transform: scale(0.9); }
-        100% { transform: scale(1); }
-    }
-    @keyframes slideInUp {
-      0% {
-        transform: translateY(20px);
-        opacity: 0;
-      }
-      100% {
-        transform: translateY(0);
-        opacity: 1;
-      }
-    }
+    /* ... (CSS Anda tetap sama) ... */
+    body { font-family: 'Inter', sans-serif; }
+    .main-header { text-align: center; margin-bottom: 0.5em; font-size: 2.5em; animation: slideInUp 0.8s ease-out; }
+    .subheader { text-align: center; font-size: 1.2em; color: #888; margin-bottom: 2em; animation: slideInUp 1s ease-out; }
+    .disclaimer { background-color: #fffae6; padding: 15px; border-left: 5px solid #ffc107; border-radius: 8px; margin-bottom: 2em; box-shadow: 0 4px 6px rgba(0,0,0,0.1); color: #664d03; animation: fadeIn 1.2s ease-in; }
+    .disclaimer b { color: #ff9800; }
+    .section-header { font-size: 1.8em; margin-top: 1.5em; margin-bottom: 0.8em; animation: fadeIn 1.5s ease-in; }
+    div.stButton > button { width: 100%; padding: 10px; border-radius: 8px; font-size: 1.1em; box-shadow: 0 2px 4px rgba(0,0,0,0.1); transition: all 0.3s ease; animation: pulse 1.5s infinite; }
+    div.stButton > button:hover { transform: translateY(-2px); box-shadow: 0 4px 8px rgba(0,0,0,0.2); }
+    .stAlert { animation: bounceIn 0.8s ease-out; }
+    @media (max-width: 768px) { .main-header { font-size: 2em; } .subheader { font-size: 1em; } }
+    @keyframes pulse { 0% { transform: scale(1); } 50% { transform: scale(1.02); } 100% { transform: scale(1); } }
+    @keyframes fadeIn { 0% { opacity: 0; } 100% { opacity: 1; } }
+    @keyframes bounceIn { 0% { transform: scale(0.3); opacity: 0; } 50% { transform: scale(1.1); opacity: 1; } 80% { transform: scale(0.9); } 100% { transform: scale(1); } }
+    @keyframes slideInUp { 0% { transform: translateY(20px); opacity: 0; } 100% { transform: translateY(0); opacity: 1; } }
     """
     )
 local_css("style.css")
 
 # ==============================================================================
-#                 PENTING: DEFINISI KELAS KUSTOM (TransformerBlock)
-#
-# Error Anda terjadi karena Keras tidak dapat menemukan kelas ini.
-# Mendekorasi dan menyertakannya di sini akan menyelesaikan masalah.
-# PASTIKAN PARAMETER INI SAMA DENGAN MODEL YANG ANDA LATIH.
+#                 PERBAIKAN: Mengganti dekorator Keras lama/baru
 # ==============================================================================
 
-@keras.saving.register_keras_serializable()
+# MENGGUNAKAN tf.keras.utils.register_keras_serializable() untuk kompatibilitas yang lebih luas
+@tf.keras.utils.register_keras_serializable() 
 class TransformerBlock(keras.layers.Layer):
     def __init__(self, num_heads, ff_dim, rate=0.1, **kwargs):
         super().__init__(**kwargs)
@@ -167,8 +88,6 @@ class TransformerBlock(keras.layers.Layer):
         })
         return config
 
-    # Tidak perlu from_config jika menggunakan Keras versi terbaru, 
-    # tetapi disertakan untuk kompatibilitas yang lebih baik.
     @classmethod
     def from_config(cls, config):
         return cls(**config)
@@ -179,11 +98,10 @@ class TransformerBlock(keras.layers.Layer):
 
 @st.cache_resource
 def load_model():
-    # Ganti path model sesuai kebutuhan, diasumsikan ada di path yang sama.
     try:
         model_path = "models/cataract_model_best.keras"
         
-        # PENTING: Meneruskan kelas kustom ke load_model
+        # Meneruskan kelas kustom ke load_model
         model = tf.keras.models.load_model(
             model_path, 
             custom_objects={"TransformerBlock": TransformerBlock}
@@ -193,12 +111,13 @@ def load_model():
         st.error(f"Error: Model file tidak ditemukan di path: {model_path}")
         return None
     except Exception as e:
-        # Error yang akan Anda temui sebelumnya akan muncul di sini jika TransformerBlock tidak didefinisikan/didaftarkan
         st.error(f"Error saat memuat model: {e}")
         return None
 
 
 model = load_model()
+
+# ... (Kode pemuatan label dan fungsi Streamlit lainnya)
 
 try:
     with open("models/labels.json", "r") as f:
@@ -257,7 +176,6 @@ with col1:
             image_bytes, caption="Gambar Mata yang Diunggah", use_container_width=True
         )
 
-        # Inisialisasi variabel untuk menghindari UnboundLocalError
         prediction_result = None
         confidence_percent = 0.0
 
@@ -272,8 +190,7 @@ with col1:
                     )
                     img_array = np.array(img)
 
-                    # Preprocessing sesuai model (asumsi Anda menggunakan MobileNetV3 
-                    # karena ada baris kode ini di kode asli Anda)
+                    # Preprocessing sesuai model MobileNetV3
                     img_array = tf.keras.applications.mobilenet_v3.preprocess_input(
                         img_array
                     )
@@ -282,34 +199,28 @@ with col1:
                     # Predict
                     predictions = model.predict(img_array)
 
-                    # confidence_score adalah nilai probabilitas tertinggi (0.0 - 1.0)
                     confidence_score = np.max(predictions[0])
                     confidence_percent = confidence_score * 100
 
-                    # predicted_class adalah indeks kelas dengan probabilitas tertinggi
                     predicted_class = np.argmax(predictions[0])
                     prediction = labels.get(str(predicted_class), "unknown")
 
-                    time.sleep(1)  # Delay kecil agar spinner terlihat
+                    time.sleep(1)
 
                     # --- Logika 3 Klasifikasi ---
                     if confidence_score < CONFIDENCE_THRESHOLD:
-                        # Kasus 3: Gambar Tidak Valid/Tidak Relevan (Kepercayaan terlalu rendah)
                         st.warning(
                             f"Hasil Prediksi: **Gambar Tidak Valid atau Tidak Relevan** (Kepercayaan tertinggi **{confidence_percent:.2f}%**). Harap unggah foto mata yang jelas dan relevan. Analisis ditolak karena keraguan model."
                         )
                     elif prediction == "normal":
-                        # Kasus 1: Normal
                         st.success(
                             f"Hasil Prediksi: Mata terdeteksi **Normal** dengan tingkat kepercayaan **{confidence_percent:.2f}%**."
                         )
                     elif prediction == "cataract":
-                        # Kasus 2: Katarak
                         st.error(
                             f"Hasil Prediksi: Mata terdeteksi memiliki **indikasi Katarak** dengan tingkat kepercayaan **{confidence_percent:.2f}%**."
                         )
                     else:
-                        # Fallback jika label tidak dikenal
                         st.exception(
                             f"Error: Label prediksi ({prediction}) tidak dikenali. Harap cek file labels.json."
                         )

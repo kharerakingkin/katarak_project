@@ -10,6 +10,7 @@ from PIL import Image
 import tensorflow as tf
 from tensorflow import keras
 from tensorflow.keras import layers, Model
+import scipy.stats  # <== pastikan sudah diinstall: pip install scipy
 
 # ==========================
 # CONFIG
@@ -21,11 +22,11 @@ MODEL_KERAS_PATH = os.path.join(BASE_DIR, "models", "cataract_model_best.keras")
 LABELS_PATH = os.path.join(BASE_DIR, "models", "labels.json")
 
 IMG_SIZE = (224, 224)
-CONFIDENCE_THRESHOLD = 0.90
+CONFIDENCE_THRESHOLD = 0.95
 EMBED_DIM = 576
 
 # ==========================
-# Styling (modern CSS)
+# Styling
 # ==========================
 def local_css(file_name):
     if os.path.exists(file_name):
@@ -38,13 +39,9 @@ with open("style.css", "w") as f:
     .main-header { text-align: center; margin-bottom: 0.5em; font-size: 2.5em; animation: slideInUp 0.8s ease-out; }
     .subheader { text-align: center; font-size: 1.2em; color: #888; margin-bottom: 2em; animation: slideInUp 1s ease-out; }
     .disclaimer { background-color: #fffae6; padding: 15px; border-left: 5px solid #ffc107; border-radius: 8px; margin-bottom: 2em; box-shadow: 0 4px 6px rgba(0,0,0,0.1); color: #664d03; animation: fadeIn 1.2s ease-in; }
-    .disclaimer b { color: #ff9800; }
     div.stButton > button { width: 100%; padding: 10px; border-radius: 8px; font-size: 1.1em; box-shadow: 0 2px 4px rgba(0,0,0,0.1); transition: all 0.3s ease; animation: pulse 1.5s infinite; }
     div.stButton > button:hover { transform: translateY(-2px); box-shadow: 0 4px 8px rgba(0,0,0,0.2); }
-    .stAlert { animation: bounceIn 0.8s ease-out; }
     @keyframes pulse { 0% { transform: scale(1); } 50% { transform: scale(1.02); } 100% { transform: scale(1); } }
-    @keyframes fadeIn { 0% { opacity: 0; } 100% { opacity: 1; } }
-    @keyframes bounceIn { 0% { transform: scale(0.3); opacity: 0; } 50% { transform: scale(1.1); opacity: 1; } 80% { transform: scale(0.9); } 100% { transform: scale(1); } }
     @keyframes slideInUp { 0% { transform: translateY(20px); opacity: 0; } 100% { transform: translateY(0); opacity: 1; } }
     """)
 local_css("style.css")
@@ -76,7 +73,7 @@ class TransformerBlock(layers.Layer):
         return self.layernorm2(out1 + ffn_output)
 
 # ==========================
-# Build Model (untuk fallback)
+# Build Hybrid Model (backup)
 # ==========================
 def build_hybrid_model(input_shape=(224, 224, 3), num_classes=2):
     inputs = tf.keras.Input(shape=input_shape)
@@ -109,7 +106,6 @@ def load_model_cached():
         return None
 
 model = load_model_cached()
-
 try:
     with open(LABELS_PATH, "r") as f:
         labels = json.load(f)
@@ -129,37 +125,24 @@ def preprocess_image_for_model(pil_image):
 def image_quality_heuristic(pil_image):
     gray = pil_image.convert("L").resize((128, 128))
     arr = np.array(gray).astype(np.float32) / 255.0
-    try:
-        import cv2
-        lap = cv2.Laplacian(np.array(gray), cv2.CV_64F)
-        sharpness = lap.var()
-    except Exception:
-        gy, gx = np.gradient(arr)
-        grad_mag = np.sqrt(gx ** 2 + gy ** 2)
-        sharpness = grad_mag.var()
+    gy, gx = np.gradient(arr)
+    grad_mag = np.sqrt(gx ** 2 + gy ** 2)
+    sharpness = grad_mag.var()
     mean_brightness = arr.mean()
     if sharpness < 0.0005 or mean_brightness < 0.08 or mean_brightness > 0.95:
         return False
     return True
 
 # ==========================
-# UI Header
+# Streamlit UI
 # ==========================
 st.markdown("<h1 class='main-header'>👁️ <b>Deteksi Katarak Berbasis AI</b></h1>", unsafe_allow_html=True)
-st.markdown("<p class='subheader'>Sistem deteksi cerdas — kini bisa menolak gambar yang bukan mata 👌</p>", unsafe_allow_html=True)
-st.markdown("""
-<div class="disclaimer">
-⚠️ <b>Disclaimer:</b> Hasil ini hanya sebagai referensi awal. Selalu konsultasikan dengan dokter mata untuk diagnosis akurat.
-</div>
-""", unsafe_allow_html=True)
+st.markdown("<p class='subheader'>Kini sistem mampu menolak gambar bukan mata 🧠</p>", unsafe_allow_html=True)
+st.markdown("<div class='disclaimer'>⚠️ <b>Disclaimer:</b> Hasil ini hanya indikasi awal. Konsultasikan dengan dokter mata.</div>", unsafe_allow_html=True)
 
-# ==========================
-# Main Layout
-# ==========================
 col1, col2 = st.columns(2)
-
 with col1:
-    st.markdown("## 🖼️ Unggah Gambar Mata", unsafe_allow_html=True)
+    st.markdown("## 🖼️ Unggah Gambar Mata")
     uploaded_file = st.file_uploader("Pilih gambar mata (JPG, JPEG, PNG)", type=["jpg", "jpeg", "png"])
 
     if uploaded_file and model:
@@ -170,47 +153,48 @@ with col1:
         if st.button("🚀 Mulai Prediksi"):
             with st.spinner("Analisis sedang berlangsung..."):
                 try:
-                    import scipy.stats
-                    # --- Cek kualitas ---
-                    ok_quality = image_quality_heuristic(pil_img)
-                    if not ok_quality:
-                        st.warning("⚠️ Gambar tampak buram, terlalu terang, atau tidak fokus. Harap unggah foto mata yang jelas.")
+                    # 1️⃣ Cek kualitas dasar
+                    if not image_quality_heuristic(pil_img):
+                        st.warning("⚠️ Gambar buram/terlalu terang — bukan gambar mata valid.")
                         st.stop()
 
-                    # --- Preprocess & Prediksi ---
+                    # 2️⃣ Prediksi model
                     X = preprocess_image_for_model(pil_img)
                     preds = model.predict(X, verbose=0)[0]
                     preds = np.array(preds).astype(float)
+
+                    # 3️⃣ Entropy + Confidence filter
+                    entropy = float(scipy.stats.entropy(preds))
                     top_idx = int(np.argmax(preds))
                     top_conf = float(preds[top_idx])
-                    entropy = float(scipy.stats.entropy(preds))
-                    prob_dict = {labels[str(i)]: float(preds[i]) * 100.0 for i in range(len(preds))}
 
+                    # 4️⃣ Tolak jika tidak relevan
                     if entropy > 0.9 or top_conf < CONFIDENCE_THRESHOLD:
                         st.warning(f"⚠️ Gambar **tidak dikenali sebagai mata manusia** (Entropy={entropy:.3f}, Confidence={top_conf*100:.2f}%).")
-                        st.json({k: f"{v:.2f}%" for k, v in prob_dict.items()})
-                    else:
-                        predicted_label = labels.get(str(top_idx), "unknown")
-                        if predicted_label == "normal":
-                            st.success(f"Mata terdeteksi: **NORMAL** — {top_conf*100:.2f}%")
-                        elif predicted_label == "cataract":
-                            st.error(f"Mata terdeteksi: **INDIKASI KATARAK** — {top_conf*100:.2f}%")
-                        else:
-                            st.info(f"Hasil: {predicted_label} — {top_conf*100:.2f}%")
+                        st.stop()
 
-                        st.write("#### Probabilitas per kelas:")
-                        for cls, pct in prob_dict.items():
-                            st.write(f"- **{cls}**: {pct:.2f}%")
+                    # 5️⃣ Hasil klasifikasi
+                    predicted_label = labels.get(str(top_idx), "unknown")
+                    prob_dict = {labels[str(i)]: float(preds[i]) * 100.0 for i in range(len(preds))}
+
+                    if predicted_label == "normal":
+                        st.success(f"Mata terdeteksi: **NORMAL** — {top_conf*100:.2f}%")
+                    elif predicted_label == "cataract":
+                        st.error(f"Mata terdeteksi: **INDIKASI KATARAK** — {top_conf*100:.2f}%")
+                    else:
+                        st.info(f"Hasil: {predicted_label} — {top_conf*100:.2f}%")
+
+                    st.write("#### Probabilitas per kelas:")
+                    for cls, pct in prob_dict.items():
+                        st.write(f"- **{cls}**: {pct:.2f}%")
+
                 except Exception as e:
                     st.error(f"Terjadi kesalahan saat prediksi: {e}")
 
 with col2:
-    st.markdown("## 📚 Informasi Katarak", unsafe_allow_html=True)
+    st.markdown("## 📚 Informasi Katarak")
     st.write("""
-    Katarak menyebabkan lensa mata menjadi keruh, menimbulkan penglihatan buram.  
-    **Gejala umum:** pandangan kabur, silau, kesulitan melihat malam hari.  
-    **Faktor risiko:** usia lanjut, diabetes, paparan UV, dan merokok.
+    Katarak menyebabkan lensa mata menjadi keruh, menurunkan kejernihan penglihatan.  
+    **Gejala umum:** penglihatan kabur, silau, sulit melihat di malam hari.  
+    **Faktor risiko:** usia lanjut, diabetes, merokok, paparan UV.
     """)
-
-st.markdown("---")
-st.write("Label mapping:", labels)

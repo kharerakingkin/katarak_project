@@ -15,6 +15,7 @@ st.set_page_config(layout="wide")
 # ==============================================================================
 #                 KONFIGURASI PATH MODEL DAN PARAMETER
 # ==============================================================================
+# MENGGUNAKAN PATH ABSOLUT YANG KUAT
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 MODEL_PATH_ABSOLUTE = os.path.join(BASE_DIR, "models", "cataract_model_best.keras")
 LABELS_PATH_ABSOLUTE = os.path.join(BASE_DIR, "models", "labels.json")
@@ -35,6 +36,7 @@ def local_css(file_name):
             unsafe_allow_html=True
         )
 
+# Membuat file CSS temporer
 with open("style.css", "w") as f:
     f.write(
         """
@@ -57,7 +59,7 @@ with open("style.css", "w") as f:
 local_css("style.css")
 
 # ==============================================================================
-#                 TRANSFORMER BLOCK DENGAN PERBAIKAN value_shape
+#                 TRANSFORMER BLOCK DENGAN SEMUA PERBAIKAN KERAS
 # ==============================================================================
 
 @tf.keras.utils.register_keras_serializable() 
@@ -69,7 +71,13 @@ class TransformerBlock(keras.layers.Layer):
         self.rate = rate
         self.embed_dim = EMBED_DIM
 
-        self.att = keras.layers.MultiHeadAttention(num_heads=num_heads, key_dim=self.embed_dim) 
+        # Inisialisasi Lapisan Internal
+        # Menambahkan output_shape untuk kompatibilitas Keras versi baru
+        self.att = keras.layers.MultiHeadAttention(
+            num_heads=num_heads, 
+            key_dim=self.embed_dim,
+            output_shape=self.embed_dim 
+        ) 
         self.ffn = keras.Sequential(
             [keras.layers.Dense(ff_dim, activation="relu"), 
              keras.layers.Dense(self.embed_dim)] 
@@ -80,11 +88,13 @@ class TransformerBlock(keras.layers.Layer):
         self.dropout1 = keras.layers.Dropout(rate)
         self.dropout2 = keras.layers.Dropout(rate)
 
-    # METODE BUILD KRITIS DENGAN MEMPERBAIKI ARGUMEN value_shape
+    # METODE BUILD KRITIS: Membangun sub-lapisan secara eksplisit
     def build(self, input_shape):
+        # input_shape: (None, 49, 576).
         embed_shape = (input_shape[0], input_shape[1], self.embed_dim)
 
-        # PERBAIKAN KRITIS: Memanggil build dengan 3 shape (query, key, value)
+        # Memperbaiki error 'value_shape' & 'EinsumDense' dengan memanggil build 
+        # dengan 3 shape (query, key, value)
         self.att.build(embed_shape, embed_shape, embed_shape) 
 
         self.ffn.build(embed_shape) 

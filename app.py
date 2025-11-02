@@ -3,17 +3,20 @@ import streamlit as st
 import streamlit.components.v1 as components
 import time
 import tensorflow as tf
-from tensorflow import keras # Diperlukan untuk dekorator dan kelas dasar
+from tensorflow import keras
 from PIL import Image
 import numpy as np
 import json
 import io
 
-# Mengatur layout halaman ke mode "wide" agar aplikasi menggunakan seluruh lebar layar.
+# Mengatur layout halaman ke mode "wide"
 st.set_page_config(layout="wide")
 
 # --- Konfigurasi Ambang Batas dan Label ---
 CONFIDENCE_THRESHOLD = 0.85
+# Dimensi embedding yang terdeteksi dari error Anda: [?, 49, 576]
+EMBED_DIM = 576 
+
 
 # --- Custom CSS for Styling ---
 def local_css(file_name):
@@ -24,7 +27,6 @@ def local_css(file_name):
 with open("style.css", "w") as f:
     f.write(
         """
-    /* ... (CSS Anda tetap sama) ... */
     body { font-family: 'Inter', sans-serif; }
     .main-header { text-align: center; margin-bottom: 0.5em; font-size: 2.5em; animation: slideInUp 0.8s ease-out; }
     .subheader { text-align: center; font-size: 1.2em; color: #888; margin-bottom: 2em; animation: slideInUp 1s ease-out; }
@@ -44,39 +46,47 @@ with open("style.css", "w") as f:
 local_css("style.css")
 
 # ==============================================================================
-#                 PERBAIKAN: Mengganti dekorator Keras lama/baru
+#                 PERBAIKAN KRITIS PADA TRANSFORMERBLOCK
 # ==============================================================================
 
-# MENGGUNAKAN tf.keras.utils.register_keras_serializable() untuk kompatibilitas yang lebih luas
 @tf.keras.utils.register_keras_serializable() 
 class TransformerBlock(keras.layers.Layer):
     def __init__(self, num_heads, ff_dim, rate=0.1, **kwargs):
         super().__init__(**kwargs)
         self.num_heads = num_heads
-        self.ff_dim = ff_dim
+        self.ff_dim = ff_dim # Dimensi intermediate/internal (128)
         self.rate = rate
+        self.embed_dim = EMBED_DIM # Dimensi embedding (576)
+
+        # Perbaikan 1: MultiHeadAttention harus menghasilkan EMBED_DIM (576) 
+        # agar bisa dijumlahkan dengan input. Key_dim diatur ke EMBED_DIM.
+        self.att = keras.layers.MultiHeadAttention(num_heads=num_heads, key_dim=EMBED_DIM) 
         
-        # Inisialisasi Layer
-        self.att = keras.layers.MultiHeadAttention(num_heads=num_heads, key_dim=ff_dim)
+        # Perbaikan 2: Dense layer terakhir HARUS menghasilkan EMBED_DIM (576) 
+        # agar bisa dijumlahkan kembali dengan input (residual connection).
         self.ffn = keras.Sequential(
-            [keras.layers.Dense(ff_dim, activation="relu"), keras.layers.Dense(ff_dim)]
+            [keras.layers.Dense(ff_dim, activation="relu"), 
+             keras.layers.Dense(EMBED_DIM)] 
         )
+        
         self.layernorm1 = keras.layers.LayerNormalization(epsilon=1e-6)
         self.layernorm2 = keras.layers.LayerNormalization(epsilon=1e-6)
         self.dropout1 = keras.layers.Dropout(rate)
         self.dropout2 = keras.layers.Dropout(rate)
-    
+
+    # Catatan: Call method tidak perlu diubah, karena input/output sudah cocok sekarang.
     def call(self, inputs, training=False):
         # Multi-Head Attention
         attn_output = self.att(inputs, inputs)
         attn_output = self.dropout1(attn_output, training=training)
+        # Residual 1: 576 + 576
         out1 = self.layernorm1(inputs + attn_output)
         
         # Feed Forward
         ffn_output = self.ffn(out1)
         ffn_output = self.dropout2(ffn_output, training=training)
         
-        # Add & Norm
+        # Residual 2: 576 + 576
         return self.layernorm2(out1 + ffn_output)
 
     def get_config(self):
@@ -85,11 +95,16 @@ class TransformerBlock(keras.layers.Layer):
             "num_heads": self.num_heads,
             "ff_dim": self.ff_dim,
             "rate": self.rate,
+            "embed_dim": self.embed_dim # Menambahkan untuk konsistensi
         })
         return config
 
     @classmethod
     def from_config(cls, config):
+        # Hapus embed_dim dari config sebelum meneruskannya ke __init__ jika __init__ 
+        # tidak menerimanya, atau sesuaikan. Karena kita menggunakan global EMBED_DIM,
+        # kita biarkan __init__ hanya menerima num_heads, ff_dim, rate.
+        config.pop('embed_dim', None)
         return cls(**config)
 
 # ==============================================================================
@@ -98,10 +113,17 @@ class TransformerBlock(keras.layers.Layer):
 
 @st.cache_resource
 def load_model():
+    model_path = "models/cataract_model_best.keras"
+    
+    # --- Debugging Path Opsional ---
+    # import os
+    # st.info(f"Direktori kerja saat ini: {os.getcwd()}")
+    # try: st.info(f"File di dalam models/: {os.listdir('models')}")
+    # except: st.info("Folder 'models' tidak dapat diakses.")
+    # -----------------------------
+
     try:
-        model_path = "models/cataract_model_best.keras"
-        
-        # Meneruskan kelas kustom ke load_model
+        # PENTING: Meneruskan kelas kustom ke load_model
         model = tf.keras.models.load_model(
             model_path, 
             custom_objects={"TransformerBlock": TransformerBlock}
@@ -111,23 +133,23 @@ def load_model():
         st.error(f"Error: Model file tidak ditemukan di path: {model_path}")
         return None
     except Exception as e:
-        st.error(f"Error saat memuat model: {e}")
+        # Catch error deserialisasi/dimensi
+        st.exception(f"Error saat memuat model: {e}")
         return None
 
 
 model = load_model()
 
-# ... (Kode pemuatan label dan fungsi Streamlit lainnya)
-
+# ... (Kode pemuatan label)
 try:
     with open("models/labels.json", "r") as f:
         labels = json.load(f)
 except FileNotFoundError:
     st.error("Error: Label file (labels.json) tidak ditemukan.")
-    labels = {"0": "normal", "1": "cataract"}  # Default labels
+    labels = {"0": "normal", "1": "cataract"}
 except Exception as e:
     st.error(f"Error saat memuat label: {e}")
-    labels = {"0": "normal", "1": "cataract"}  # Default labels
+    labels = {"0": "normal", "1": "cataract"}
 
 
 # --- Header Section ---

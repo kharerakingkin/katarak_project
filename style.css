@@ -1,0 +1,90 @@
+
+    body {
+        font-family: 'Inter', sans-serif;
+    }
+    .main-header {
+        text-align: center;
+        margin-bottom: 0.5em;
+        font-size: 2.5em;
+        animation: slideInUp 0.8s ease-out;
+    }
+    .subheader {
+        text-align: center;
+        font-size: 1.2em;
+        color: #888;
+        margin-bottom: 2em;
+        animation: slideInUp 1s ease-out;
+    }
+    .disclaimer {
+        /* Warna latar belakang netral dan warna teks yang kontras */
+        background-color: #fffae6; /* Warna kuning muda */
+        padding: 15px;
+        border-left: 5px solid #ffc107; /* Warna peringatan (kuning) */
+        border-radius: 8px;
+        margin-bottom: 2em;
+        box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        color: #664d03; /* Warna teks gelap agar terlihat jelas */
+        animation: fadeIn 1.2s ease-in;
+    }
+    .disclaimer b {
+        color: #ff9800; /* Warna teks peringatan yang lebih terang */
+    }
+    .section-header {
+        font-size: 1.8em;
+        margin-top: 1.5em;
+        margin-bottom: 0.8em;
+        animation: fadeIn 1.5s ease-in;
+    }
+    /* Menargetkan tombol Streamlit secara lebih spesifik */
+    div.stButton > button {
+        width: 100%;
+        padding: 10px;
+        border-radius: 8px;
+        font-size: 1.1em;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        transition: all 0.3s ease;
+        animation: pulse 1.5s infinite; /* Animasi berjalan terus-menerus */
+    }
+    div.stButton > button:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+    }
+    /* Animasi untuk hasil prediksi */
+    .stAlert {
+        animation: bounceIn 0.8s ease-out;
+    }
+    @media (max-width: 768px) {
+        .main-header {
+            font-size: 2em;
+        }
+        .subheader {
+            font-size: 1em;
+        }
+    }
+    /* Animasi */
+    @keyframes pulse {
+        0% { transform: scale(1); }
+        50% { transform: scale(1.02); }
+        100% { transform: scale(1); }
+    }
+    @keyframes fadeIn {
+        0% { opacity: 0; }
+        100% { opacity: 1; }
+    }
+    @keyframes bounceIn {
+        0% { transform: scale(0.3); opacity: 0; }
+        50% { transform: scale(1.1); opacity: 1; }
+        80% { transform: scale(0.9); }
+        100% { transform: scale(1); }
+    }
+    @keyframes slideInUp {
+      0% {
+        transform: translateY(20px);
+        opacity: 0;
+      }
+      100% {
+        transform: translateY(0);
+        opacity: 1;
+      }
+    }
+    

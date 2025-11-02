@@ -15,23 +15,24 @@ st.set_page_config(layout="wide")
 # ==============================================================================
 #                 KONFIGURASI PATH MODEL DAN PARAMETER
 # ==============================================================================
-# MENGGUNAKAN PATH ABSOLUT YANG KUAT:
+# PENTING: MENGGUNAKAN PATH ABSOLUT YANG KUAT
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 MODEL_PATH_ABSOLUTE = os.path.join(BASE_DIR, "models", "cataract_model_best.keras")
 LABELS_PATH_ABSOLUTE = os.path.join(BASE_DIR, "models", "labels.json")
 
 # --- Konfigurasi Ambang Batas dan Keras ---
 CONFIDENCE_THRESHOLD = 0.85
+# Dimensi embedding yang terdeteksi dari error Anda: 576
 EMBED_DIM = 576 
 # ==============================================================================
 
 
 # --- Custom CSS for Styling ---
+# [Kode CSS tetap sama]
 def local_css(file_name):
     with open(file_name) as f:
         st.markdown(f"<style>{f.read()}</style>", unsafe_allow_html=True)
 
-# Membuat file CSS temporer
 with open("style.css", "w") as f:
     f.write(
         """
@@ -54,7 +55,7 @@ with open("style.css", "w") as f:
 local_css("style.css")
 
 # ==============================================================================
-#                 TRANSFORMER BLOCK DENGAN SEMUA PERBAIKAN KODING KERAS
+#                 TRANSFORMER BLOCK DENGAN SEMUA PERBAIKAN KERAS
 # ==============================================================================
 
 @tf.keras.utils.register_keras_serializable() 
@@ -66,7 +67,7 @@ class TransformerBlock(keras.layers.Layer):
         self.rate = rate
         self.embed_dim = EMBED_DIM
 
-        # Inisialisasi Lapisan Internal (key_dim dan Dense layer terakhir harus 576)
+        # Inisialisasi Lapisan Internal
         self.att = keras.layers.MultiHeadAttention(num_heads=num_heads, key_dim=self.embed_dim) 
         self.ffn = keras.Sequential(
             [keras.layers.Dense(ff_dim, activation="relu"), 
@@ -78,11 +79,22 @@ class TransformerBlock(keras.layers.Layer):
         self.dropout1 = keras.layers.Dropout(rate)
         self.dropout2 = keras.layers.Dropout(rate)
 
+    # METODE BUILD KRITIS DENGAN PEMBANGUNAN EKSPLISIT
     def build(self, input_shape):
+        # input_shape: (None, 49, 576). Kita gunakan shape ini untuk build.
+        embed_shape = (input_shape[0], input_shape[1], self.embed_dim)
+
+        # Membangun semua sub-lapisan (MultiHeadAttention, Sequential, LayerNormalization)
+        # secara eksplisit untuk memaksa alokasi variabel (bobot).
+        self.att.build(embed_shape) 
+        self.ffn.build(embed_shape) 
+        self.layernorm1.build(embed_shape)
+        self.layernorm2.build(embed_shape)
+        
         super().build(input_shape)
 
     def compute_output_shape(self, input_shape):
-        """Metode ini membantu Keras memverifikasi shape output saat deserialisasi."""
+        """Memastikan Keras mengetahui shape output (penting untuk deserialisasi)."""
         return input_shape
 
     def call(self, inputs, training=False):
@@ -114,12 +126,11 @@ class TransformerBlock(keras.layers.Layer):
 
 @st.cache_resource
 def load_model():
-    model_path = MODEL_PATH_ABSOLUTE # MENGGUNAKAN PATH ABSOLUT DI SINI
+    model_path = MODEL_PATH_ABSOLUTE # MENGGUNAKAN PATH ABSOLUT
     
-    # --- DEBUGGING PATH ---
+    # --- DEBUGGING PATH (Akan memberi tahu jika file benar-benar hilang) ---
     if not os.path.exists(model_path):
-        st.error(f"❌ DEBUGGING GAGAL: File model tidak ditemukan di path absolut: {model_path}")
-        # Mencoba mencetak file di folder models
+        st.error(f"❌ DEBUGGING GAGAL: File model tidak ditemukan di path: {model_path}")
         try:
             files_in_models = os.listdir(os.path.join(BASE_DIR, "models"))
             st.info(f"Isi folder models/ yang terlihat: {files_in_models}")
@@ -138,6 +149,10 @@ def load_model():
         return model
     except Exception as e:
         st.exception(f"❌ Error saat memuat model: {e}")
+        st.error(
+            "SOLUSI: Error Keras ini (jika file ditemukan) berarti ada ketidakcocokan versi TensorFlow. "
+            "Harap periksa dan perbarui `requirements.txt` Anda."
+        )
         return None
 
 
@@ -155,7 +170,8 @@ except Exception as e:
     labels = {"0": "normal", "1": "cataract"}
 
 
-# --- Header Section ---
+# --- [Bagian Header, Disclaimer, Panduan Penggunaan, dan Logika Prediksi] ---
+
 st.markdown(
     "<h1 class='main-header'>👁️ <b>Deteksi Katarak Berbasis AI</b></h1>",
     unsafe_allow_html=True,
@@ -165,7 +181,6 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-# --- Disclaimer Section ---
 st.markdown(
     """
 <div class="disclaimer">
@@ -175,7 +190,6 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-# --- Usage Guide Section ---
 st.markdown("## 📚 Panduan Penggunaan", unsafe_allow_html=True)
 st.write(
     """Aplikasi ini dirancang untuk mendeteksi indikasi katarak dari gambar mata. Ikuti langkah-langkah mudah di bawah ini:
@@ -187,7 +201,6 @@ st.write(
 """
 )
 
-# --- Main Columns for Upload and Information ---
 col1, col2 = st.columns(2)
 
 with col1:

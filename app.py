@@ -12,24 +12,24 @@ import io
 # Mengatur layout halaman ke mode "wide"
 st.set_page_config(layout="wide")
 
-# --- Konfigurasi Ambang Batas dan Label ---
+# ==============================================================================
+#                 KONFIGURASI PATH MODEL DAN PARAMETER
+# ==============================================================================
+# MENGGUNAKAN PATH ABSOLUT YANG KUAT:
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+MODEL_PATH_ABSOLUTE = os.path.join(BASE_DIR, "models", "cataract_model_best.keras")
+LABELS_PATH_ABSOLUTE = os.path.join(BASE_DIR, "models", "labels.json")
+
+# --- Konfigurasi Ambang Batas dan Keras ---
 CONFIDENCE_THRESHOLD = 0.85
-# Dimensi embedding yang terdeteksi dari error Anda: 576
 EMBED_DIM = 576 
+# ==============================================================================
 
 
 # --- Custom CSS for Styling ---
 def local_css(file_name):
-    # Memastikan file style.css ada sebelum dibaca
-    if os.path.exists(file_name):
-        with open(file_name) as f:
-            st.markdown(f"<style>{f.read()}</style>", unsafe_allow_html=True)
-    else:
-        # Fallback CSS jika file tidak ada
-        st.markdown(
-            "<style> .main-header {text-align: center; font-size: 2.5em;} </style>",
-            unsafe_allow_html=True
-        )
+    with open(file_name) as f:
+        st.markdown(f"<style>{f.read()}</style>", unsafe_allow_html=True)
 
 # Membuat file CSS temporer
 with open("style.css", "w") as f:
@@ -54,7 +54,7 @@ with open("style.css", "w") as f:
 local_css("style.css")
 
 # ==============================================================================
-#                 TRANSFORMER BLOCK DENGAN SEMUA PERBAIKAN
+#                 TRANSFORMER BLOCK DENGAN SEMUA PERBAIKAN KODING KERAS
 # ==============================================================================
 
 @tf.keras.utils.register_keras_serializable() 
@@ -64,10 +64,9 @@ class TransformerBlock(keras.layers.Layer):
         self.num_heads = num_heads
         self.ff_dim = ff_dim 
         self.rate = rate
-        self.embed_dim = EMBED_DIM # Menggunakan dimensi global 576
+        self.embed_dim = EMBED_DIM
 
-        # Inisialisasi Lapisan Internal
-        # key_dim dan output Dense layer terakhir HARUS sama dengan EMBED_DIM (576)
+        # Inisialisasi Lapisan Internal (key_dim dan Dense layer terakhir harus 576)
         self.att = keras.layers.MultiHeadAttention(num_heads=num_heads, key_dim=self.embed_dim) 
         self.ffn = keras.Sequential(
             [keras.layers.Dense(ff_dim, activation="relu"), 
@@ -79,24 +78,18 @@ class TransformerBlock(keras.layers.Layer):
         self.dropout1 = keras.layers.Dropout(rate)
         self.dropout2 = keras.layers.Dropout(rate)
 
-    # METODE KRITIS: Memastikan lapisan internal dibangun sebelum memuat bobot.
     def build(self, input_shape):
-        # Membangun lapisan internal secara eksplisit (penting untuk EinsumDense)
-        # Meskipun tidak dipanggil secara eksplisit, keberadaannya membantu Keras.
-        # Self.att akan dibangun pada panggilan pertama jika tidak dibangun di sini.
-        super().build(input_shape) 
+        super().build(input_shape)
 
     def compute_output_shape(self, input_shape):
         """Metode ini membantu Keras memverifikasi shape output saat deserialisasi."""
         return input_shape
 
     def call(self, inputs, training=False):
-        # Multi-Head Attention
         attn_output = self.att(inputs, inputs)
         attn_output = self.dropout1(attn_output, training=training)
         out1 = self.layernorm1(inputs + attn_output)
         
-        # Feed Forward
         ffn_output = self.ffn(out1)
         ffn_output = self.dropout2(ffn_output, training=training)
         
@@ -116,16 +109,22 @@ class TransformerBlock(keras.layers.Layer):
         return cls(**config)
 
 # ==============================================================================
-#                      FUNGSI LOAD MODEL
+#                      FUNGSI LOAD MODEL MENGGUNAKAN PATH ABSOLUT
 # ==============================================================================
 
 @st.cache_resource
 def load_model():
-    model_path = "models/cataract_model_best.keras"
+    model_path = MODEL_PATH_ABSOLUTE # MENGGUNAKAN PATH ABSOLUT DI SINI
     
-    # --- Debugging Path Ringan ---
+    # --- DEBUGGING PATH ---
     if not os.path.exists(model_path):
-        st.error(f"❌ Error: File model seharusnya sudah diunggah, tetapi tidak ditemukan di: {model_path}")
+        st.error(f"❌ DEBUGGING GAGAL: File model tidak ditemukan di path absolut: {model_path}")
+        # Mencoba mencetak file di folder models
+        try:
+            files_in_models = os.listdir(os.path.join(BASE_DIR, "models"))
+            st.info(f"Isi folder models/ yang terlihat: {files_in_models}")
+        except:
+            st.info("Folder 'models' tidak dapat diakses.")
         return None
     # --- Akhir Debugging ---
 
@@ -139,7 +138,6 @@ def load_model():
         return model
     except Exception as e:
         st.exception(f"❌ Error saat memuat model: {e}")
-        st.warning("Jika error ini muncul lagi, kemungkinan besar ada ketidakcocokan versi TensorFlow/Keras antara saat melatih dan saat deployment.")
         return None
 
 
@@ -147,7 +145,7 @@ model = load_model()
 
 # ... (Kode pemuatan label)
 try:
-    with open("models/labels.json", "r") as f:
+    with open(LABELS_PATH_ABSOLUTE, "r") as f:
         labels = json.load(f)
 except FileNotFoundError:
     st.error("Error: Label file (labels.json) tidak ditemukan.")

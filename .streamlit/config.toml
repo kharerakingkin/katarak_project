@@ -1,0 +1,4 @@
+[server]
+# Mengunci versi Python ke 3.11 untuk meningkatkan stabilitas 
+# dengan TensorFlow 2.15.0 (atau versi lama yang kompatibel).
+pythonVersion = "3.11"

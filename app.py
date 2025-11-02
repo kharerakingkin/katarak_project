@@ -72,7 +72,7 @@ class TransformerBlock(keras.layers.Layer):
         self.embed_dim = EMBED_DIM
 
         # Inisialisasi Lapisan Internal
-        # Menambahkan output_shape untuk kompatibilitas Keras versi baru
+        # Menambahkan output_shape untuk kompatibilitas Keras versi baru (mengatasi EinsumDense)
         self.att = keras.layers.MultiHeadAttention(
             num_heads=num_heads, 
             key_dim=self.embed_dim,

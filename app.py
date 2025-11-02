@@ -15,32 +15,26 @@ st.set_page_config(layout="wide")
 # ==============================================================================
 #                 KONFIGURASI PATH MODEL DAN PARAMETER
 # ==============================================================================
-# MENGGUNAKAN PATH ABSOLUT YANG KUAT
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 MODEL_PATH_ABSOLUTE = os.path.join(BASE_DIR, "models", "cataract_model_best.keras")
 LABELS_PATH_ABSOLUTE = os.path.join(BASE_DIR, "models", "labels.json")
 
-# --- Konfigurasi Ambang Batas dan Keras ---
 CONFIDENCE_THRESHOLD = 0.85
-# Dimensi embedding yang terdeteksi dari error Anda: 576
 EMBED_DIM = 576 
 # ==============================================================================
 
 
 # --- Custom CSS for Styling ---
 def local_css(file_name):
-    # Memastikan file style.css ada sebelum dibaca
     if os.path.exists(file_name):
         with open(file_name) as f:
             st.markdown(f"<style>{f.read()}</style>", unsafe_allow_html=True)
     else:
-        # Fallback CSS
         st.markdown(
             "<style> .main-header {text-align: center; font-size: 2.5em;} </style>",
             unsafe_allow_html=True
         )
 
-# Membuat file CSS temporer
 with open("style.css", "w") as f:
     f.write(
         """
@@ -63,7 +57,7 @@ with open("style.css", "w") as f:
 local_css("style.css")
 
 # ==============================================================================
-#                 TRANSFORMER BLOCK DENGAN SEMUA PERBAIKAN KERAS
+#                 TRANSFORMER BLOCK DENGAN PERBAIKAN value_shape
 # ==============================================================================
 
 @tf.keras.utils.register_keras_serializable() 
@@ -75,7 +69,6 @@ class TransformerBlock(keras.layers.Layer):
         self.rate = rate
         self.embed_dim = EMBED_DIM
 
-        # Inisialisasi Lapisan Internal (Dimensi output 576)
         self.att = keras.layers.MultiHeadAttention(num_heads=num_heads, key_dim=self.embed_dim) 
         self.ffn = keras.Sequential(
             [keras.layers.Dense(ff_dim, activation="relu"), 
@@ -87,11 +80,13 @@ class TransformerBlock(keras.layers.Layer):
         self.dropout1 = keras.layers.Dropout(rate)
         self.dropout2 = keras.layers.Dropout(rate)
 
-    # METODE BUILD KRITIS: Membangun sub-lapisan secara eksplisit
+    # METODE BUILD KRITIS DENGAN MEMPERBAIKI ARGUMEN value_shape
     def build(self, input_shape):
         embed_shape = (input_shape[0], input_shape[1], self.embed_dim)
 
-        self.att.build(embed_shape) 
+        # PERBAIKAN KRITIS: Memanggil build dengan 3 shape (query, key, value)
+        self.att.build(embed_shape, embed_shape, embed_shape) 
+
         self.ffn.build(embed_shape) 
         self.layernorm1.build(embed_shape)
         self.layernorm2.build(embed_shape)
@@ -99,7 +94,6 @@ class TransformerBlock(keras.layers.Layer):
         super().build(input_shape)
 
     def compute_output_shape(self, input_shape):
-        """Memastikan Keras mengetahui shape output."""
         return input_shape
 
     def call(self, inputs, training=False):
@@ -145,7 +139,6 @@ def load_model():
     # --- Akhir Debugging ---
 
     try:
-        # Pemuatan model dengan custom_objects
         model = tf.keras.models.load_model(
             model_path, 
             custom_objects={"TransformerBlock": TransformerBlock}
@@ -155,8 +148,8 @@ def load_model():
     except Exception as e:
         st.exception(f"❌ Error saat memuat model: {e}")
         st.error(
-            "SOLUSI: Error Keras ini (jika file ditemukan) berarti ada ketidakcocokan versi TensorFlow. "
-            "Pastikan `requirements.txt` menggunakan versi yang benar."
+            "SOLUSI: Error Keras ini menunjukkan masalah versi atau koding kustom. "
+            "Pastikan Anda telah memperbarui `requirements.txt` ke versi yang kompatibel."
         )
         return None
 

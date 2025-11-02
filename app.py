@@ -21,7 +21,7 @@ MODEL_KERAS_PATH = os.path.join(BASE_DIR, "models", "cataract_model_best.keras")
 LABELS_PATH = os.path.join(BASE_DIR, "models", "labels.json")
 
 IMG_SIZE = (224, 224)
-CONFIDENCE_THRESHOLD = 0.85
+CONFIDENCE_THRESHOLD = 0.90
 EMBED_DIM = 576
 
 # ==========================

@@ -14,7 +14,7 @@ st.set_page_config(layout="wide")
 
 # --- Konfigurasi Ambang Batas dan Label ---
 CONFIDENCE_THRESHOLD = 0.85
-# Dimensi embedding yang terdeteksi dari error Anda: [?, 49, 576]
+# Dimensi embedding yang terdeteksi dari error Anda: 576
 EMBED_DIM = 576 
 
 
@@ -54,19 +54,16 @@ class TransformerBlock(keras.layers.Layer):
     def __init__(self, num_heads, ff_dim, rate=0.1, **kwargs):
         super().__init__(**kwargs)
         self.num_heads = num_heads
-        self.ff_dim = ff_dim # Dimensi intermediate/internal (128)
+        self.ff_dim = ff_dim 
         self.rate = rate
-        self.embed_dim = EMBED_DIM # Dimensi embedding (576)
+        self.embed_dim = EMBED_DIM # Menggunakan dimensi global 576
 
-        # Perbaikan 1: MultiHeadAttention harus menghasilkan EMBED_DIM (576) 
-        # agar bisa dijumlahkan dengan input. Key_dim diatur ke EMBED_DIM.
-        self.att = keras.layers.MultiHeadAttention(num_heads=num_heads, key_dim=EMBED_DIM) 
-        
-        # Perbaikan 2: Dense layer terakhir HARUS menghasilkan EMBED_DIM (576) 
-        # agar bisa dijumlahkan kembali dengan input (residual connection).
+        # Inisialisasi Lapisan Internal
+        # key_dim dan output Dense layer terakhir HARUS sama dengan EMBED_DIM (576)
+        self.att = keras.layers.MultiHeadAttention(num_heads=num_heads, key_dim=self.embed_dim) 
         self.ffn = keras.Sequential(
             [keras.layers.Dense(ff_dim, activation="relu"), 
-             keras.layers.Dense(EMBED_DIM)] 
+             keras.layers.Dense(self.embed_dim)] 
         )
         
         self.layernorm1 = keras.layers.LayerNormalization(epsilon=1e-6)
@@ -74,7 +71,11 @@ class TransformerBlock(keras.layers.Layer):
         self.dropout1 = keras.layers.Dropout(rate)
         self.dropout2 = keras.layers.Dropout(rate)
 
-    # Catatan: Call method tidak perlu diubah, karena input/output sudah cocok sekarang.
+    # METODE BUILD KRITIS: Memastikan lapisan internal dibangun sebelum memuat bobot.
+    def build(self, input_shape):
+        # Membangun lapisan internal dengan shape yang diharapkan (None, 49, 576)
+        super().build(input_shape)
+
     def call(self, inputs, training=False):
         # Multi-Head Attention
         attn_output = self.att(inputs, inputs)
@@ -95,16 +96,11 @@ class TransformerBlock(keras.layers.Layer):
             "num_heads": self.num_heads,
             "ff_dim": self.ff_dim,
             "rate": self.rate,
-            "embed_dim": self.embed_dim # Menambahkan untuk konsistensi
         })
         return config
 
     @classmethod
     def from_config(cls, config):
-        # Hapus embed_dim dari config sebelum meneruskannya ke __init__ jika __init__ 
-        # tidak menerimanya, atau sesuaikan. Karena kita menggunakan global EMBED_DIM,
-        # kita biarkan __init__ hanya menerima num_heads, ff_dim, rate.
-        config.pop('embed_dim', None)
         return cls(**config)
 
 # ==============================================================================
@@ -115,26 +111,21 @@ class TransformerBlock(keras.layers.Layer):
 def load_model():
     model_path = "models/cataract_model_best.keras"
     
-    # --- Debugging Path Opsional ---
-    # import os
-    # st.info(f"Direktori kerja saat ini: {os.getcwd()}")
-    # try: st.info(f"File di dalam models/: {os.listdir('models')}")
-    # except: st.info("Folder 'models' tidak dapat diakses.")
-    # -----------------------------
-
     try:
-        # PENTING: Meneruskan kelas kustom ke load_model
+        # Meneruskan kelas kustom ke load_model
         model = tf.keras.models.load_model(
             model_path, 
             custom_objects={"TransformerBlock": TransformerBlock}
         )
+        st.success("✅ Model AI berhasil dimuat!")
         return model
     except FileNotFoundError:
-        st.error(f"Error: Model file tidak ditemukan di path: {model_path}")
+        st.error(f"❌ Error: Model file tidak ditemukan di path: {model_path}. Pastikan struktur folder models/ benar.")
         return None
     except Exception as e:
         # Catch error deserialisasi/dimensi
-        st.exception(f"Error saat memuat model: {e}")
+        st.exception(f"❌ Error saat memuat model: {e}")
+        st.warning("Solusi Gagal: Periksa kembali apakah parameter model (num_heads, ff_dim, rate) dan versi TensorFlow Anda sama persis saat pelatihan.")
         return None
 
 

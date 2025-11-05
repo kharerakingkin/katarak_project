@@ -170,7 +170,7 @@ with col1:
 
                     # 4️⃣ Tolak jika tidak relevan
                     if entropy > 0.8 or top_conf < CONFIDENCE_THRESHOLD:
-                        st.warning(f"⚠️ Gambar **tidak dikenali sebagai mata manusia** (Entropy={entropy:.3f}, Confidence={top_conf*100:.2f}%).")
+                        st.warning(f"⚠️ Gambar **tidak dikenali sebagai mata manusia**")
                         st.stop()
 
                     # 5️⃣ Hasil klasifikasi

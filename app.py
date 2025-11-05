@@ -29,7 +29,7 @@ FACE_CASCADE_PATH = os.path.join(CASCADE_DIR, "haarcascade_frontalface_default.x
 EYE_CASCADE_PATH = os.path.join(CASCADE_DIR, "haarcascade_eye.xml")
 
 IMG_SIZE = (224, 224)
-CONFIDENCE_THRESHOLD = 0.85 # NILAI AMBANG KEPERCAYAAN BARU
+CONFIDENCE_THRESHOLD = 0.85 # NILAI AMBANG KEPERCAYAAN
 EMBED_DIM = 576
 
 # ==========================
@@ -204,12 +204,7 @@ with col1:
     st.markdown("## 🖼️ Unggah Gambar Mata")
     uploaded_file = st.file_uploader("Pilih gambar mata (JPG, JPEG, PNG)", type=["jpg", "jpeg", "png"])
     
-    # Checkbox untuk melewati Auto Zoom (solusi untuk gambar yang sudah di-zoom)
-    skip_zoom = st.checkbox(
-        "Gambar ini **sudah** berupa *close-up* mata (lewati Auto Zoom)",
-        help="Centang ini jika Anda mengupload gambar yang sudah terpotong (zoom) pada bagian mata saja. Ini akan mencegah peringatan gagal deteksi wajah."
-    )
-    # ==========================================================
+    # Checkbox 'skip_zoom' sudah DIHAPUS
 
     if uploaded_file and model:
         image_bytes = uploaded_file.read()
@@ -220,25 +215,22 @@ with col1:
             with st.spinner("Analisis sedang berlangsung..."):
                 try:
                     
-                    if skip_zoom:
-                        # 1a. SKIP ZOOM: Gunakan gambar asli sebagai gambar akhir
-                        pil_img_final = pil_img_original
-                        st.info("✅ Auto Zoom dilewati. Menganalisis gambar yang sudah di-zoom.")
-                    
-                    elif FACE_CASCADE and EYE_CASCADE:
-                        # 1b. LAKUKAN AUTO ZOOM
+                    if FACE_CASCADE and EYE_CASCADE:
+                        # Selalu coba Auto Zoom jika file cascade tersedia
                         pil_img_cropped = crop_to_eye(pil_img_original, FACE_CASCADE, EYE_CASCADE)
                         
                         if pil_img_cropped == pil_img_original:
-                            # Peringatan muncul HANYA jika Auto Zoom diaktifkan dan gagal
-                            st.info("⚠️ Deteksi mata gagal. Menganalisis seluruh gambar asli.")
+                            # Jika crop_to_eye mengembalikan gambar asli (gagal mendeteksi wajah/mata, atau gambar sudah close-up)
+                            # TIDAK ADA WARNING LAGI. Langsung gunakan gambar asli.
+                            st.info("ℹ️ Deteksi otomatis dilewati. Menganalisis gambar asli (atau close-up).")
                             pil_img_final = pil_img_original
                         else:
+                            # Auto Zoom BERHASIL
                             st.success("✅ Area mata berhasil di-zoom.")
                             st.image(pil_img_cropped, caption="Gambar Mata yang Di-zoom (Input Model)", width='stretch')
                             pil_img_final = pil_img_cropped
                     else:
-                        # 1c. Cascade tidak dimuat/dinonaktifkan
+                        # Cascade tidak dimuat/dinonaktifkan
                         pil_img_final = pil_img_original
                         st.warning("⚠️ Menggunakan gambar asli karena Auto Zoom tidak aktif.")
 

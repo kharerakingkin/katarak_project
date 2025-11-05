@@ -29,9 +29,7 @@ FACE_CASCADE_PATH = os.path.join(CASCADE_DIR, "haarcascade_frontalface_default.x
 EYE_CASCADE_PATH = os.path.join(CASCADE_DIR, "haarcascade_eye.xml")
 
 IMG_SIZE = (224, 224)
-# =======================================================
-CONFIDENCE_THRESHOLD = 0.85 # NILAI BARU: 0.85
-# =======================================================
+CONFIDENCE_THRESHOLD = 0.85 # NILAI AMBANG KEPERCAYAAN
 EMBED_DIM = 576
 
 # ==========================
@@ -54,7 +52,7 @@ with open("style.css", "w") as f:
 local_css("style.css")
 
 # ==========================
-# Transformer Block
+# Transformer Block (Wajib Ada untuk loading model)
 # ==========================
 @tf.keras.utils.register_keras_serializable()
 class TransformerBlock(layers.Layer):
@@ -90,6 +88,7 @@ def load_model_cached():
         model = tf.keras.models.load_model(MODEL_KERAS_PATH, custom_objects={"TransformerBlock": TransformerBlock}, compile=False)
         return model
     except Exception as e:
+        # Menampilkan error yang jelas jika model tidak ditemukan
         st.error(f"❌ Error loading model: File not found. Pastikan file '{os.path.basename(MODEL_KERAS_PATH)}' ada di folder 'models/'.")
         return None
 
@@ -101,9 +100,11 @@ def load_cascades_cached():
         eye_cascade = cv2.CascadeClassifier(EYE_CASCADE_PATH)
         
         if face_cascade.empty() or eye_cascade.empty():
+             # Jika file XML hilang, kembalikan None
              return None, None
         return face_cascade, eye_cascade
     except Exception:
+        # Menangkap error jika OpenCV gagal saat inisialisasi (e.g., libGL.so.1 hilang)
         return None, None
 
 
@@ -194,6 +195,7 @@ st.markdown("<h1 class='main-header'>👁️ <b>Deteksi Katarak Berbasis AI</b><
 st.markdown("<p class='subheader'>Menggunakan **OpenCV Auto Zoom** untuk fokus ke mata.</p>", unsafe_allow_html=True)
 st.markdown("<div class='disclaimer'>⚠️ <b>Disclaimer:</b> Hasil ini hanya indikasi awal. Konsultasikan dengan dokter mata.</div>", unsafe_allow_html=True)
 
+# Peringatan Cascade jika file tidak dimuat
 if not FACE_CASCADE or not EYE_CASCADE:
     st.warning("‼️ Fungsionalitas **Auto Zoom dinonaktifkan** karena kegagalan memuat file Haar Cascade XML. Harap periksa folder `cascades` dan pastikan dependensi sistem `libgl1-mesa-glx` (packages.txt) terinstal.")
 
@@ -264,6 +266,7 @@ with col1:
                     st.error(f"Terjadi kesalahan fatal saat prediksi: {e}")
 
     elif uploaded_file and model is None:
+         # Kasus: Gambar diunggah tapi model gagal dimuat
          st.error("⚠️ Tidak dapat memulai prediksi karena model AI gagal dimuat.")
 
 with col2:

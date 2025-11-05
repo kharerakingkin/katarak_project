@@ -11,7 +11,7 @@ import tensorflow as tf
 from tensorflow import keras
 from tensorflow.keras import layers, Model
 import scipy.stats 
-import cv2 # Library OpenCV untuk Deteksi dan Auto Zoom
+import cv2 # Library OpenCV
 
 # ==========================
 # KONFIGURASI DAN PATH
@@ -29,7 +29,9 @@ FACE_CASCADE_PATH = os.path.join(CASCADE_DIR, "haarcascade_frontalface_default.x
 EYE_CASCADE_PATH = os.path.join(CASCADE_DIR, "haarcascade_eye.xml")
 
 IMG_SIZE = (224, 224)
-CONFIDENCE_THRESHOLD = 0.85
+# =======================================================
+CONFIDENCE_THRESHOLD = 0.85 # NILAI BARU: 0.85
+# =======================================================
 EMBED_DIM = 576
 
 # ==========================
@@ -40,6 +42,7 @@ def local_css(file_name):
         with open(file_name) as f:
             st.markdown(f"<style>{f.read()}</style>", unsafe_allow_html=True)
 
+# Membuat dan memuat style.css (untuk konsistensi)
 with open("style.css", "w") as f:
     f.write("""
     .main-header { text-align: center; margin-bottom: 0.5em; font-size: 2.5em; animation: slideInUp 0.8s ease-out; }
@@ -51,7 +54,7 @@ with open("style.css", "w") as f:
 local_css("style.css")
 
 # ==========================
-# Transformer Block (Wajib Ada)
+# Transformer Block
 # ==========================
 @tf.keras.utils.register_keras_serializable()
 class TransformerBlock(layers.Layer):
@@ -78,7 +81,7 @@ class TransformerBlock(layers.Layer):
 
 
 # ==========================
-# LOAD RESOURCES
+# LOAD RESOURCES & ERROR HANDLING KRITIS
 # ==========================
 @st.cache_resource
 def load_model_cached():
@@ -87,22 +90,20 @@ def load_model_cached():
         model = tf.keras.models.load_model(MODEL_KERAS_PATH, custom_objects={"TransformerBlock": TransformerBlock}, compile=False)
         return model
     except Exception as e:
-        st.error(f"❌ Error loading model: File not found: {MODEL_KERAS_PATH}. Please ensure the file is an accessible .keras zip file.")
+        st.error(f"❌ Error loading model: File not found. Pastikan file '{os.path.basename(MODEL_KERAS_PATH)}' ada di folder 'models/'.")
         return None
 
 @st.cache_resource
 def load_cascades_cached():
-    """Memuat Haar Cascade Classifiers dan menangani kegagalan file."""
+    """Memuat Haar Cascade Classifiers. Memberi feedback jika file hilang."""
     try:
         face_cascade = cv2.CascadeClassifier(FACE_CASCADE_PATH)
         eye_cascade = cv2.CascadeClassifier(EYE_CASCADE_PATH)
         
         if face_cascade.empty() or eye_cascade.empty():
-             # Peringatan jika file XML hilang (diabaikan jika file tidak ada)
              return None, None
         return face_cascade, eye_cascade
     except Exception:
-        # Menangkap error jika OpenCV tidak terinstal atau libGL.so.1 hilang
         return None, None
 
 
@@ -139,9 +140,12 @@ def image_quality_heuristic(pil_image):
     return True
 
 def crop_to_eye(pil_image, face_cascade, eye_cascade):
-    """Menggunakan Haar Cascade untuk mendeteksi mata dan memotong gambar."""
+    """
+    Menggunakan Haar Cascade untuk mendeteksi mata dan memotong gambar.
+    Mengembalikan gambar asli jika deteksi/crop gagal.
+    """
     if face_cascade is None or eye_cascade is None:
-        return pil_image # Kembali jika cascade tidak dimuat
+        return pil_image 
 
     try:
         opencv_image = np.array(pil_image.convert('RGB')) 
@@ -171,7 +175,6 @@ def crop_to_eye(pil_image, face_cascade, eye_cascade):
         final_x_end = min(pil_image.width, eye_x_center + zoom_size // 2)
         final_y_end = min(pil_image.height, eye_y_center + zoom_size // 2)
         
-        # Pengecekan validitas
         if final_x_end <= final_x_start or final_y_end <= final_y_start:
              return pil_image 
 
@@ -180,20 +183,19 @@ def crop_to_eye(pil_image, face_cascade, eye_cascade):
         return cropped_eye_pil
 
     except Exception:
-        # Mengembalikan gambar asli jika ada crash di OpenCV
         return pil_image 
 
 
 # ==========================
 # STREAMLIT UI & LOGIC
 # ==========================
+
 st.markdown("<h1 class='main-header'>👁️ <b>Deteksi Katarak Berbasis AI</b></h1>", unsafe_allow_html=True)
 st.markdown("<p class='subheader'>Menggunakan **OpenCV Auto Zoom** untuk fokus ke mata.</p>", unsafe_allow_html=True)
 st.markdown("<div class='disclaimer'>⚠️ <b>Disclaimer:</b> Hasil ini hanya indikasi awal. Konsultasikan dengan dokter mata.</div>", unsafe_allow_html=True)
 
-# Peringatan Cascade jika file tidak dimuat
 if not FACE_CASCADE or not EYE_CASCADE:
-    st.warning("‼️ Fungsionalitas **Auto Zoom dinonaktifkan** karena kegagalan memuat file Haar Cascade XML. Harap periksa folder `cascades` dan `packages.txt`.")
+    st.warning("‼️ Fungsionalitas **Auto Zoom dinonaktifkan** karena kegagalan memuat file Haar Cascade XML. Harap periksa folder `cascades` dan pastikan dependensi sistem `libgl1-mesa-glx` (packages.txt) terinstal.")
 
 col1, col2 = st.columns(2)
 
@@ -207,7 +209,6 @@ with col1:
         st.image(pil_img_original, caption="Gambar yang Diunggah (Asli)", width='stretch')
 
         if st.button("🚀 Mulai Prediksi"):
-            # Model hanya akan memproses jika model berhasil dimuat (model is not None)
             with st.spinner("Analisis sedang berlangsung..."):
                 try:
                     # 1. AUTO ZOOM 
@@ -236,7 +237,7 @@ with col1:
                     preds = model.predict(X, verbose=0)[0]
                     preds = np.array(preds).astype(float)
 
-                    # 4. Filter Confidence
+                    # 4. Filter Confidence dengan threshold 0.85
                     top_idx = int(np.argmax(preds))
                     top_conf = float(preds[top_idx])
 
@@ -260,11 +261,9 @@ with col1:
                         st.write(f"- **{cls.capitalize()}**: {pct:.2f}%")
 
                 except Exception as e:
-                    # Menangkap error prediksi lain
                     st.error(f"Terjadi kesalahan fatal saat prediksi: {e}")
 
     elif uploaded_file and model is None:
-         # Kasus: Gambar diunggah tapi model gagal dimuat
          st.error("⚠️ Tidak dapat memulai prediksi karena model AI gagal dimuat.")
 
 with col2:

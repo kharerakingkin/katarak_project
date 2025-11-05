@@ -169,7 +169,7 @@ with col1:
                     top_conf = float(preds[top_idx])
 
                     # 4️⃣ Tolak jika tidak relevan
-                    if entropy > 0.9 or top_conf < CONFIDENCE_THRESHOLD:
+                    if entropy > 0.8 or top_conf < CONFIDENCE_THRESHOLD:
                         st.warning(f"⚠️ Gambar **tidak dikenali sebagai mata manusia** (Entropy={entropy:.3f}, Confidence={top_conf*100:.2f}%).")
                         st.stop()
 
@@ -194,7 +194,20 @@ with col1:
 with col2:
     st.markdown("## 📚 Informasi Katarak")
     st.write("""
-    Katarak menyebabkan lensa mata menjadi keruh, menurunkan kejernihan penglihatan.  
-    **Gejala umum:** penglihatan kabur, silau, sulit melihat di malam hari.  
-    **Faktor risiko:** usia lanjut, diabetes, merokok, paparan UV.
+    Katarak adalah kondisi mata di mana lensa mata menjadi keruh, menyebabkan penglihatan kabur atau buram. Biasanya terjadi pada orang lanjut usia. Ini adalah penyebab utama kebutaan yang dapat diobati di seluruh dunia.
+    
+    **Gejala Umum:**
+    - Penglihatan kabur, buram, atau berkabut
+    - Warna terlihat pudar atau kurang jelas
+    - Silau yang mengganggu saat melihat cahaya terang (terutama malam hari)
+    - Peningkatan penglihatan dekat sementara pada lansia (disebut 'second sight')
+    - Kesulitan melihat di malam hari atau dalam cahaya redup
+    
+    **Faktor Risiko:**
+    - Usia (>60 tahun)
+    - Diabetes
+    - Merokok
+    - Paparan sinar UV berlebihan tanpa perlindungan
+    - Riwayat cedera mata atau peradangan sebelumnya
+    - Penggunaan steroid jangka panjang
     """)

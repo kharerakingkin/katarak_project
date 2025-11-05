@@ -29,7 +29,7 @@ FACE_CASCADE_PATH = os.path.join(CASCADE_DIR, "haarcascade_frontalface_default.x
 EYE_CASCADE_PATH = os.path.join(CASCADE_DIR, "haarcascade_eye.xml")
 
 IMG_SIZE = (224, 224)
-CONFIDENCE_THRESHOLD = 0.90
+CONFIDENCE_THRESHOLD = 0.85
 EMBED_DIM = 576
 
 # ==========================

@@ -29,18 +29,17 @@ FACE_CASCADE_PATH = os.path.join(CASCADE_DIR, "haarcascade_frontalface_default.x
 EYE_CASCADE_PATH = os.path.join(CASCADE_DIR, "haarcascade_eye.xml")
 
 IMG_SIZE = (224, 224)
-CONFIDENCE_THRESHOLD = 0.85 # NILAI AMBANG KEPERCAYAAN
+CONFIDENCE_THRESHOLD = 0.85 
 EMBED_DIM = 576
 
 # ==========================
-# STYLING
+# STYLING (Tetap)
 # ==========================
 def local_css(file_name):
     if os.path.exists(file_name):
         with open(file_name) as f:
             st.markdown(f"<style>{f.read()}</style>", unsafe_allow_html=True)
 
-# Membuat dan memuat style.css (untuk konsistensi)
 with open("style.css", "w") as f:
     f.write("""
     .main-header { text-align: center; margin-bottom: 0.5em; font-size: 2.5em; animation: slideInUp 0.8s ease-out; }
@@ -52,7 +51,7 @@ with open("style.css", "w") as f:
 local_css("style.css")
 
 # ==========================
-# Transformer Block (Wajib Ada untuk loading model)
+# Transformer Block (Tetap)
 # ==========================
 @tf.keras.utils.register_keras_serializable()
 class TransformerBlock(layers.Layer):
@@ -79,32 +78,27 @@ class TransformerBlock(layers.Layer):
 
 
 # ==========================
-# LOAD RESOURCES & ERROR HANDLING KRITIS
+# LOAD RESOURCES & ERROR HANDLING KRITIS (Tetap)
 # ==========================
 @st.cache_resource
 def load_model_cached():
-    """Memuat model Keras utama. Menangani File Not Found."""
     try:
         model = tf.keras.models.load_model(MODEL_KERAS_PATH, custom_objects={"TransformerBlock": TransformerBlock}, compile=False)
         return model
     except Exception as e:
-        # Menampilkan error yang jelas jika model tidak ditemukan
         st.error(f"❌ Error loading model: File not found. Pastikan file '{os.path.basename(MODEL_KERAS_PATH)}' ada di folder 'models/'.")
         return None
 
 @st.cache_resource
 def load_cascades_cached():
-    """Memuat Haar Cascade Classifiers. Memberi feedback jika file hilang."""
     try:
         face_cascade = cv2.CascadeClassifier(FACE_CASCADE_PATH)
         eye_cascade = cv2.CascadeClassifier(EYE_CASCADE_PATH)
         
         if face_cascade.empty() or eye_cascade.empty():
-             # Jika file XML hilang, kembalikan None
              return None, None
         return face_cascade, eye_cascade
     except Exception:
-        # Menangkap error jika OpenCV gagal saat inisialisasi (e.g., libGL.so.1 hilang)
         return None, None
 
 
@@ -119,10 +113,9 @@ except Exception:
 
 
 # ==========================
-# HELPER & CV FUNCTIONS
+# HELPER & CV FUNCTIONS (Tetap)
 # ==========================
 def preprocess_image_for_model(pil_image):
-    """Menyiapkan gambar PIL untuk input model Keras."""
     img = pil_image.resize(IMG_SIZE)
     arr = np.array(img).astype("float32")
     arr = tf.keras.applications.mobilenet_v3.preprocess_input(arr)
@@ -130,7 +123,6 @@ def preprocess_image_for_model(pil_image):
     return arr
 
 def image_quality_heuristic(pil_image):
-    """Cek dasar ketajaman dan kecerahan."""
     gray = pil_image.convert("L").resize((128, 128))
     arr = np.array(gray).astype(np.float32) / 255.0
     gy, gx = np.gradient(arr)
@@ -141,10 +133,6 @@ def image_quality_heuristic(pil_image):
     return True
 
 def crop_to_eye(pil_image, face_cascade, eye_cascade):
-    """
-    Menggunakan Haar Cascade untuk mendeteksi mata dan memotong gambar.
-    Mengembalikan gambar asli jika deteksi/crop gagal.
-    """
     if face_cascade is None or eye_cascade is None:
         return pil_image 
 
@@ -153,20 +141,17 @@ def crop_to_eye(pil_image, face_cascade, eye_cascade):
         opencv_image_bgr = cv2.cvtColor(opencv_image, cv2.COLOR_RGB2BGR) 
         gray = cv2.cvtColor(opencv_image_bgr, cv2.COLOR_BGR2GRAY)
         
-        # 1. Deteksi Wajah
         faces = face_cascade.detectMultiScale(gray, scaleFactor=1.1, minNeighbors=5, minSize=(50, 50))
         if len(faces) == 0: return pil_image 
 
         (x, y, w, h) = sorted(faces, key=lambda f: f[2]*f[3], reverse=True)[0] 
         roi_gray = gray[y:y+h, x:x+w]
         
-        # 2. Deteksi Mata di dalam Wajah
         eyes = eye_cascade.detectMultiScale(roi_gray, scaleFactor=1.1, minNeighbors=5, minSize=(20, 20))
         if len(eyes) == 0: return pil_image
             
         (ex, ey, ew, eh) = eyes[0]
         
-        # 3. Hitung Bounding Box (dengan padding 2.5x)
         eye_x_center = x + ex + ew // 2
         eye_y_center = y + ey + eh // 2
         zoom_size = int(max(ew, eh) * 2.5) 
@@ -179,7 +164,6 @@ def crop_to_eye(pil_image, face_cascade, eye_cascade):
         if final_x_end <= final_x_start or final_y_end <= final_y_start:
              return pil_image 
 
-        # 4. Crop dan kembalikan
         cropped_eye_pil = pil_image.crop((final_x_start, final_y_start, final_x_end, final_y_end))
         return cropped_eye_pil
 
@@ -188,7 +172,7 @@ def crop_to_eye(pil_image, face_cascade, eye_cascade):
 
 
 # ==========================
-# STREAMLIT UI & LOGIC
+# STREAMLIT UI & LOGIC (Perubahan di sini)
 # ==========================
 
 st.markdown("<h1 class='main-header'>👁️ <b>Deteksi Katarak Berbasis AI</b></h1>", unsafe_allow_html=True)
@@ -197,13 +181,20 @@ st.markdown("<div class='disclaimer'>⚠️ <b>Disclaimer:</b> Hasil ini hanya i
 
 # Peringatan Cascade jika file tidak dimuat
 if not FACE_CASCADE or not EYE_CASCADE:
-    st.warning("‼️ Fungsionalitas **Auto Zoom dinonaktifkan** karena kegagalan memuat file Haar Cascade XML. Harap periksa folder `cascades` dan pastikan dependensi sistem `libgl1-mesa-glx` (packages.txt) terinstal.")
+    st.warning("‼️ Fungsionalitas **Auto Zoom dinonaktifkan** karena kegagalan memuat file Haar Cascade XML. Harap periksa folder `cascades` dan dependensi sistem.")
 
 col1, col2 = st.columns(2)
 
 with col1:
     st.markdown("## 🖼️ Unggah Gambar Mata")
     uploaded_file = st.file_uploader("Pilih gambar mata (JPG, JPEG, PNG)", type=["jpg", "jpeg", "png"])
+    
+    # === REVISI UTAMA: Tambahkan Checkbox untuk Melewati Zoom ===
+    skip_zoom = st.checkbox(
+        "Gambar ini **sudah** berupa *close-up* mata (lewati Auto Zoom)",
+        help="Centang ini jika Anda mengupload gambar yang sudah terpotong (zoom) pada bagian mata saja. Ini akan mencegah peringatan gagal deteksi wajah."
+    )
+    # ==========================================================
 
     if uploaded_file and model:
         image_bytes = uploaded_file.read()
@@ -213,11 +204,18 @@ with col1:
         if st.button("🚀 Mulai Prediksi"):
             with st.spinner("Analisis sedang berlangsung..."):
                 try:
-                    # 1. AUTO ZOOM 
-                    if FACE_CASCADE and EYE_CASCADE:
+                    
+                    if skip_zoom:
+                        # 1a. SKIP ZOOM: Gunakan gambar asli sebagai gambar akhir
+                        pil_img_final = pil_img_original
+                        st.info("✅ Auto Zoom dilewati. Menganalisis gambar yang sudah di-zoom.")
+                    
+                    elif FACE_CASCADE and EYE_CASCADE:
+                        # 1b. LAKUKAN AUTO ZOOM
                         pil_img_cropped = crop_to_eye(pil_img_original, FACE_CASCADE, EYE_CASCADE)
                         
                         if pil_img_cropped == pil_img_original:
+                            # Peringatan muncul HANYA jika Auto Zoom diaktifkan dan gagal
                             st.info("⚠️ Deteksi mata gagal. Menganalisis seluruh gambar asli.")
                             pil_img_final = pil_img_original
                         else:
@@ -225,16 +223,18 @@ with col1:
                             st.image(pil_img_cropped, caption="Gambar Mata yang Di-zoom (Input Model)", width='stretch')
                             pil_img_final = pil_img_cropped
                     else:
+                        # 1c. Cascade tidak dimuat/dinonaktifkan
                         pil_img_final = pil_img_original
+                        st.warning("⚠️ Menggunakan gambar asli karena Auto Zoom tidak aktif.")
 
                     st.write("---")
                     
-                    # 2. Cek kualitas dasar
+                    # 2. Cek kualitas dasar (Tetap)
                     if not image_quality_heuristic(pil_img_final):
                         st.warning("⚠️ Gambar buram/terlalu terang/gelap — harap unggah gambar yang lebih baik.")
                         st.stop()
 
-                    # 3. Prediksi model
+                    # 3. Prediksi model (Tetap)
                     X = preprocess_image_for_model(pil_img_final)
                     preds = model.predict(X, verbose=0)[0]
                     preds = np.array(preds).astype(float)
@@ -247,7 +247,7 @@ with col1:
                         st.warning(f"⚠️ Kepercayaan prediksi terlalu rendah ({top_conf*100:.2f}%). Harap unggah gambar mata yang lebih jelas.")
                         st.stop()
 
-                    # 5. Hasil klasifikasi
+                    # 5. Hasil klasifikasi (Tetap)
                     predicted_label = labels.get(str(top_idx), "unknown")
                     prob_dict = {labels[str(i)]: float(preds[i]) * 100.0 for i in range(len(preds))}
 
@@ -266,7 +266,6 @@ with col1:
                     st.error(f"Terjadi kesalahan fatal saat prediksi: {e}")
 
     elif uploaded_file and model is None:
-         # Kasus: Gambar diunggah tapi model gagal dimuat
          st.error("⚠️ Tidak dapat memulai prediksi karena model AI gagal dimuat.")
 
 with col2:

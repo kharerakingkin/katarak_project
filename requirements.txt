@@ -4,4 +4,4 @@ numpy
 streamlit
 pillow
 scipy
-opencv
+opencv-python

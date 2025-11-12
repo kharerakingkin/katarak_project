@@ -4,6 +4,7 @@ import streamlit as st
 from PIL import Image
 import numpy as np
 import json
+import plotly.graph_objects as go
 
 # ==========================
 # KONFIGURASI
@@ -21,8 +22,7 @@ def load_model():
     if not os.path.exists(MODEL_PATH):
         st.error("❌ Model tidak ditemukan! Pastikan file 'cataract_model_latest.keras' ada di folder 'models/'.")
         st.stop()
-    model = tf.keras.models.load_model(MODEL_PATH, compile=False)
-    return model
+    return tf.keras.models.load_model(MODEL_PATH, compile=False)
 
 @st.cache_data
 def load_labels():
@@ -38,55 +38,59 @@ labels = load_labels()
 # ==========================
 # SIDEBAR MODE TAMPILAN
 # ==========================
-st.sidebar.title("⚙️ Pengaturan")
-theme_choice = st.sidebar.radio("🎨 Mode Tampilan", ["🌙 Dark Mode", "☀️ Light Mode"])
+st.sidebar.title("⚙️ Pengaturan Tampilan")
+theme_choice = st.sidebar.radio("🎨 Pilih Mode", ["🌙 Dark Mode", "☀️ Light Mode"])
 
+# Tema warna dinamis
 if theme_choice == "🌙 Dark Mode":
     bg_color = "#0E1117"
-    text_color = "#FAFAFA"
+    text_color = "#EDEDED"
     accent_color = "#00BFA6"
-    box_bg = "linear-gradient(145deg, #1E1E1E, #171717)"
+    card_bg = "linear-gradient(145deg, #1E1E1E, #171717)"
 else:
     bg_color = "#FFFFFF"
     text_color = "#222222"
     accent_color = "#00BFA6"
-    box_bg = "#F8F9FA"
+    card_bg = "#F8F9FA"
 
 # ==========================
-# CSS DINAMIS
+# CSS RESPONSIVE
 # ==========================
 st.markdown(f"""
 <style>
 body {{
     background-color: {bg_color};
     color: {text_color};
-}}
-h2, h4, h5, p, label {{
-    color: {text_color} !important;
     font-family: 'Inter', sans-serif;
+}}
+h1, h2, h3, h4, h5, h6, p, label {{
+    color: {text_color} !important;
 }}
 .stButton>button {{
     background-color: {accent_color};
     color: white;
     border: none;
-    border-radius: 8px;
+    border-radius: 10px;
     padding: 0.6em 1.2em;
     font-weight: 600;
-    transition: 0.2s;
+    transition: 0.3s;
 }}
 .stButton>button:hover {{
     background-color: #02d8bd;
 }}
-.stProgress > div > div > div {{
-    background-color: {accent_color} !important;
-}}
-.result-box {{
-    background: {box_bg};
-    padding: 20px;
-    border-radius: 14px;
-    box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+.result-card {{
+    background: {card_bg};
+    padding: 25px;
+    border-radius: 16px;
+    box-shadow: 0 6px 20px rgba(0,0,0,0.2);
     text-align: center;
     margin-top: 20px;
+    transition: all 0.3s ease-in-out;
+}}
+@media (max-width: 768px) {{
+    .stColumn {{
+        flex-direction: column !important;
+    }}
 }}
 </style>
 """, unsafe_allow_html=True)
@@ -106,8 +110,8 @@ def predict(image):
 st.set_page_config(page_title="Deteksi Katarak AI", layout="wide")
 
 st.markdown(f"""
-<h2 style='text-align:center; color:{accent_color};'>👁️ Deteksi Katarak Berbasis AI</h2>
-<p style='text-align:center;'>Unggah gambar mata untuk mendeteksi indikasi katarak menggunakan model <b>MobileNetV3 + Transformer</b>.</p>
+<h2 style='text-align:center; color:{accent_color}; font-weight:700;'>👁️ Deteksi Katarak Berbasis AI</h2>
+<p style='text-align:center; font-size:17px;'>Unggah gambar mata untuk mendeteksi indikasi katarak menggunakan model <b>MobileNetV3 + Transformer</b>.</p>
 """, unsafe_allow_html=True)
 
 uploaded_file = st.file_uploader("📤 Unggah Gambar Mata", type=["jpg", "jpeg", "png"])
@@ -130,11 +134,11 @@ if uploaded_file:
         # ==========================
         if confidence < CONFIDENCE_THRESHOLD:
             status_label = "❓ Gambar Tidak Relevan"
-            status_desc = "⚠️ Gambar tidak dikenali sebagai mata manusia. Pastikan mengunggah foto mata yang jelas."
+            status_desc = "⚠️ Gambar tidak dikenali sebagai mata. Mohon unggah foto mata yang jelas dan fokus."
             status_color = "#FFA500"
         elif predicted_class.lower() == "cataract":
             status_label = "⚠️ Indikasi Katarak"
-            status_desc = "Model mendeteksi kemungkinan katarak. Konsultasikan ke dokter mata untuk pemeriksaan lebih lanjut."
+            status_desc = "Model mendeteksi adanya indikasi katarak. Segera konsultasikan ke dokter mata untuk pemeriksaan lebih lanjut."
             status_color = "#FF4B4B"
         else:
             status_label = "✅ Normal"
@@ -142,7 +146,7 @@ if uploaded_file:
             status_color = "#4BB543"
 
         # ==========================
-        # TAMPILKAN HASIL
+        # HASIL RESPONSIF
         # ==========================
         st.markdown("<hr>", unsafe_allow_html=True)
         st.subheader("📊 Hasil Analisis")
@@ -151,15 +155,37 @@ if uploaded_file:
         with col1:
             st.metric(label="🧠 Klasifikasi", value=status_label)
         with col2:
-            st.metric(label="📈 Tingkat Keyakinan", value=f"{confidence*100:.2f}%")
+            st.metric(label="📈 Keyakinan", value=f"{confidence*100:.2f}%")
 
-        st.progress(float(confidence))
+        # Bar Chart (Plotly)
+        fig = go.Figure(
+            data=[
+                go.Bar(
+                    x=["Cataract", "Normal"],
+                    y=[cataract_prob, normal_prob],
+                    marker_color=[status_color if p == np.max(preds)*100 else "#00BFA6" for p in [cataract_prob, normal_prob]],
+                    text=[f"{cataract_prob:.1f}%", f"{normal_prob:.1f}%"],
+                    textposition="outside"
+                )
+            ]
+        )
+        fig.update_layout(
+            title="Probabilitas Klasifikasi",
+            xaxis_title="Kelas",
+            yaxis_title="Probabilitas (%)",
+            template="plotly_dark" if theme_choice == "🌙 Dark Mode" else "plotly_white",
+            height=350
+        )
+        st.plotly_chart(fig, use_container_width=True)
 
+        # ==========================
+        # KARTU HASIL
+        # ==========================
         st.markdown(f"""
-        <div class='result-box'>
-            <h4 style='color:{status_color};'>{status_label}</h4>
+        <div class='result-card'>
+            <h3 style='color:{status_color}; font-weight:700;'>{status_label}</h3>
             <p style='font-size:16px;'>{status_desc}</p>
-            <hr style='margin:10px 0; border: 1px solid #333;'>
+            <hr style='margin:10px 0; border: 1px solid rgba(0,0,0,0.1);'>
             <p><b style='color:#FF4B4B;'>Cataract:</b> {cataract_prob:.2f}%<br>
             <b style='color:#4BB543;'>Normal:</b> {normal_prob:.2f}%</p>
         </div>

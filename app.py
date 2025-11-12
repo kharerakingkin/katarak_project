@@ -15,6 +15,43 @@ LABELS_PATH = os.path.join(MODEL_DIR, "labels.json")
 CONFIDENCE_THRESHOLD = 0.90  # ambang batas gambar tidak relevan
 
 # ==========================
+# DEFINISI CUSTOM LAYER
+# (harus sama dengan saat training)
+# ==========================
+@tf.keras.utils.register_keras_serializable()
+class TransformerBlock(tf.keras.layers.Layer):
+    def __init__(self, num_heads, ff_dim, dropout=0.1, **kwargs):
+        super().__init__(**kwargs)
+        self.num_heads = num_heads
+        self.ff_dim = ff_dim
+        self.dropout = dropout
+
+    def build(self, input_shape):
+        embed_dim = input_shape[-1]
+        self.att = tf.keras.layers.MultiHeadAttention(
+            num_heads=self.num_heads,
+            key_dim=embed_dim // self.num_heads,
+            output_shape=embed_dim
+        )
+        self.ffn = tf.keras.Sequential([
+            tf.keras.layers.Dense(self.ff_dim, activation="relu"),
+            tf.keras.layers.Dense(embed_dim)
+        ])
+        self.layernorm1 = tf.keras.layers.LayerNormalization(epsilon=1e-6)
+        self.layernorm2 = tf.keras.layers.LayerNormalization(epsilon=1e-6)
+        self.dropout1 = tf.keras.layers.Dropout(self.dropout)
+        self.dropout2 = tf.keras.layers.Dropout(self.dropout)
+        super().build(input_shape)
+
+    def call(self, inputs, training=False):
+        attn_output = self.att(inputs, inputs)
+        attn_output = self.dropout1(attn_output, training=training)
+        out1 = self.layernorm1(inputs + attn_output)
+        ffn_output = self.ffn(out1)
+        ffn_output = self.dropout2(ffn_output, training=training)
+        return self.layernorm2(out1 + ffn_output)
+
+# ==========================
 # LOAD MODEL & LABELS
 # ==========================
 @st.cache_resource
@@ -22,7 +59,8 @@ def load_model():
     if not os.path.exists(MODEL_PATH):
         st.error("❌ Model tidak ditemukan! Pastikan file 'cataract_model_latest.keras' ada di folder 'models/'.")
         st.stop()
-    return tf.keras.models.load_model(MODEL_PATH, compile=False)
+    # custom_objects penting agar TransformerBlock dikenali
+    return tf.keras.models.load_model(MODEL_PATH, custom_objects={"TransformerBlock": TransformerBlock}, compile=False)
 
 @st.cache_data
 def load_labels():
@@ -36,12 +74,11 @@ model = load_model()
 labels = load_labels()
 
 # ==========================
-# SIDEBAR MODE TAMPILAN
+# TEMA DAN CSS (DARK/LIGHT MODE)
 # ==========================
 st.sidebar.title("⚙️ Pengaturan Tampilan")
 theme_choice = st.sidebar.radio("🎨 Pilih Mode", ["🌙 Dark Mode", "☀️ Light Mode"])
 
-# Tema warna dinamis
 if theme_choice == "🌙 Dark Mode":
     bg_color = "#0E1117"
     text_color = "#EDEDED"
@@ -53,9 +90,6 @@ else:
     accent_color = "#00BFA6"
     card_bg = "#F8F9FA"
 
-# ==========================
-# CSS RESPONSIVE
-# ==========================
 st.markdown(f"""
 <style>
 body {{
@@ -63,17 +97,16 @@ body {{
     color: {text_color};
     font-family: 'Inter', sans-serif;
 }}
-h1, h2, h3, h4, h5, h6, p, label {{
+h2, h3, h4, p, label {{
     color: {text_color} !important;
 }}
 .stButton>button {{
     background-color: {accent_color};
     color: white;
-    border: none;
     border-radius: 10px;
     padding: 0.6em 1.2em;
+    border: none;
     font-weight: 600;
-    transition: 0.3s;
 }}
 .stButton>button:hover {{
     background-color: #02d8bd;
@@ -85,12 +118,6 @@ h1, h2, h3, h4, h5, h6, p, label {{
     box-shadow: 0 6px 20px rgba(0,0,0,0.2);
     text-align: center;
     margin-top: 20px;
-    transition: all 0.3s ease-in-out;
-}}
-@media (max-width: 768px) {{
-    .stColumn {{
-        flex-direction: column !important;
-    }}
 }}
 </style>
 """, unsafe_allow_html=True)
@@ -111,7 +138,7 @@ st.set_page_config(page_title="Deteksi Katarak AI", layout="wide")
 
 st.markdown(f"""
 <h2 style='text-align:center; color:{accent_color}; font-weight:700;'>👁️ Deteksi Katarak Berbasis AI</h2>
-<p style='text-align:center; font-size:17px;'>Unggah gambar mata untuk mendeteksi indikasi katarak menggunakan model <b>MobileNetV3 + Transformer</b>.</p>
+<p style='text-align:center;'>Unggah gambar mata untuk memeriksa indikasi katarak dengan model <b>MobileNetV3 + Transformer</b>.</p>
 """, unsafe_allow_html=True)
 
 uploaded_file = st.file_uploader("📤 Unggah Gambar Mata", type=["jpg", "jpeg", "png"])
@@ -129,24 +156,22 @@ if uploaded_file:
             confidence = np.max(preds)
             predicted_class = classes[np.argmax(preds)]
 
-        # ==========================
-        # KEPUTUSAN
-        # ==========================
+        # Tentukan hasil akhir
         if confidence < CONFIDENCE_THRESHOLD:
             status_label = "❓ Gambar Tidak Relevan"
-            status_desc = "⚠️ Gambar tidak dikenali sebagai mata. Mohon unggah foto mata yang jelas dan fokus."
+            status_desc = "⚠️ Gambar tidak dikenali sebagai mata. Harap unggah foto mata yang jelas dan fokus."
             status_color = "#FFA500"
         elif predicted_class.lower() == "cataract":
             status_label = "⚠️ Indikasi Katarak"
-            status_desc = "Model mendeteksi adanya indikasi katarak. Segera konsultasikan ke dokter mata untuk pemeriksaan lebih lanjut."
+            status_desc = "Model mendeteksi indikasi katarak. Sebaiknya konsultasi ke dokter mata."
             status_color = "#FF4B4B"
         else:
             status_label = "✅ Normal"
-            status_desc = "Tidak terdeteksi tanda-tanda katarak. Mata tampak normal."
+            status_desc = "Tidak terdeteksi tanda-tanda katarak."
             status_color = "#4BB543"
 
         # ==========================
-        # HASIL RESPONSIF
+        # TAMPILKAN HASIL
         # ==========================
         st.markdown("<hr>", unsafe_allow_html=True)
         st.subheader("📊 Hasil Analisis")
@@ -157,7 +182,7 @@ if uploaded_file:
         with col2:
             st.metric(label="📈 Keyakinan", value=f"{confidence*100:.2f}%")
 
-        # Bar Chart (Plotly)
+        # Grafik probabilitas
         fig = go.Figure(
             data=[
                 go.Bar(
@@ -178,15 +203,13 @@ if uploaded_file:
         )
         st.plotly_chart(fig, use_container_width=True)
 
-        # ==========================
-        # KARTU HASIL
-        # ==========================
+        # Kartu hasil
         st.markdown(f"""
         <div class='result-card'>
             <h3 style='color:{status_color}; font-weight:700;'>{status_label}</h3>
-            <p style='font-size:16px;'>{status_desc}</p>
-            <hr style='margin:10px 0; border: 1px solid rgba(0,0,0,0.1);'>
-            <p><b style='color:#FF4B4B;'>Cataract:</b> {cataract_prob:.2f}%<br>
-            <b style='color:#4BB543;'>Normal:</b> {normal_prob:.2f}%</p>
+            <p>{status_desc}</p>
+            <hr>
+            <b style='color:#FF4B4B;'>Cataract:</b> {cataract_prob:.2f}%<br>
+            <b style='color:#4BB543;'>Normal:</b> {normal_prob:.2f}%
         </div>
         """, unsafe_allow_html=True)

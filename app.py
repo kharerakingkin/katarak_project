@@ -15,9 +15,15 @@ MODEL_PATH = os.path.join(MODEL_DIR, "cataract_model_latest.keras")
 LABELS_PATH = os.path.join(MODEL_DIR, "labels.json")
 
 # ==========================
-# DEFINISI CUSTOM LAYER
+# REGISTER CUSTOM LAYER (compat untuk Keras <3 & >=3)
 # ==========================
-@keras.saving.register_keras_serializable(package="Custom")
+try:
+    register_serializable = keras.saving.register_keras_serializable
+except AttributeError:
+    # fallback untuk Keras 2.x
+    register_serializable = keras.utils.register_keras_serializable
+
+@register_serializable(package="Custom")
 class TransformerBlock(layers.Layer):
     def __init__(self, num_heads=4, ff_dim=128, dropout=0.1, **kwargs):
         super().__init__(**kwargs)
@@ -53,8 +59,11 @@ class TransformerBlock(layers.Layer):
 # ==========================
 @st.cache_resource
 def load_model():
+    if not os.path.exists(MODEL_PATH):
+        st.error("❌ Model tidak ditemukan!")
+        st.stop()
     try:
-        return keras.models.load_model(
+        return tf.keras.models.load_model(
             MODEL_PATH,
             compile=False,
             custom_objects={"TransformerBlock": TransformerBlock}
@@ -72,7 +81,7 @@ model = load_model()
 labels = load_labels()
 
 # ==========================
-# FUNGSI PREDIKSI
+# PREDIKSI
 # ==========================
 def predict(image):
     img = image.resize((224, 224))
@@ -81,64 +90,53 @@ def predict(image):
     return preds
 
 # ==========================
-# UI
+# STREAMLIT SETUP
 # ==========================
 st.set_page_config(page_title="Deteksi Katarak AI", layout="wide")
 
-# CSS BARU — KARTU HASIL LEBIH JELAS DAN KONTRAS
+# CSS — Tampilan Modern, Card Jelas
 st.markdown("""
 <style>
 .result-card {
     display: flex;
     align-items: center;
     justify-content: flex-start;
-    background-color: #ffffff;
-    border-radius: 16px;
-    box-shadow: 0 6px 20px rgba(0,0,0,0.15);
+    background-color: #f9f9f9;
+    border-radius: 14px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.08);
     padding: 25px 35px;
-    margin-top: 40px;
+    margin-top: 30px;
     color: #222;
-    max-width: 700px;
-    margin-left: auto;
-    margin-right: auto;
 }
 .result-icon {
-    font-size: 60px;
-    margin-right: 25px;
+    font-size: 55px;
+    margin-right: 20px;
 }
 .result-text h2 {
     margin: 0;
-    font-size: 28px;
+    font-size: 24px;
     font-weight: 700;
 }
 .result-text p {
     margin-top: 6px;
     margin-bottom: 10px;
-    font-size: 16px;
-    color: #444;
+    font-size: 15px;
+    color: #333;
 }
 .stats {
-    margin-top: 12px;
+    margin-top: 10px;
     display: flex;
-    flex-wrap: wrap;
-    gap: 10px;
+    gap: 12px;
 }
 .stat {
-    background-color: #f3f3f3;
-    padding: 8px 14px;
+    background-color: #e8f5e9;
+    padding: 8px 16px;
     border-radius: 8px;
     font-weight: 600;
-    font-size: 15px;
 }
-.cataract-card {
-    border-left: 6px solid #d32f2f;
-}
-.normal-card {
-    border-left: 6px solid #2e7d32;
-}
-.irrelevant-card {
-    border-left: 6px solid #f9a825;
-}
+.cataract-card { border-left: 6px solid #d32f2f; }
+.normal-card { border-left: 6px solid #2e7d32; }
+.irrelevant-card { border-left: 6px solid #f9a825; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -146,15 +144,15 @@ st.markdown("""
 # HEADER
 # ==========================
 st.markdown("""
-<h2 style='text-align:center; color:#00897b;'>👁️ Aplikasi Deteksi Katarak Berbasis AI</h2>
-<p style='text-align:center; color:#555;'>Unggah foto mata Anda untuk mendeteksi indikasi katarak menggunakan model MobileNetV3 + Vision Transformer.</p>
+<h2 style='text-align:center; color:#00796b;'>👁️ Aplikasi Deteksi Katarak Berbasis AI</h2>
+<p style='text-align:center; color:#555;'>Unggah foto mata Anda untuk mendeteksi indikasi katarak dengan model MobileNetV3 + Vision Transformer.</p>
 """, unsafe_allow_html=True)
 
 uploaded_file = st.file_uploader("📤 Unggah Gambar Mata", type=["jpg", "jpeg", "png"])
 
 if uploaded_file:
     image = Image.open(uploaded_file)
-    st.image(image, caption="📷 Gambar yang diunggah", width=350)
+    st.image(image, caption="📷 Gambar yang diunggah", width=320)
 
     if st.button("🔍 Deteksi Katarak"):
         with st.spinner("Menganalisis gambar..."):
@@ -169,7 +167,7 @@ if uploaded_file:
                 predicted_class = "irrelevant"
 
         # ==========================
-        # TAMPILKAN HASIL
+        # KARTU HASIL
         # ==========================
         if predicted_class.lower() == "cataract":
             icon, title, desc, card_class = "⚠️", "Indikasi Katarak", "Segera konsultasikan ke dokter mata untuk pemeriksaan lebih lanjut.", "cataract-card"

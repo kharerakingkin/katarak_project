@@ -47,7 +47,7 @@ def predict(image):
 # ==========================
 st.set_page_config(page_title="Deteksi Katarak AI", layout="wide")
 
-# CSS Kustom agar tampilan hasil lebih elegan
+# CSS BARU — Lebih kontras dan modern
 st.markdown("""
 <style>
 body {
@@ -58,35 +58,41 @@ body {
     padding: 25px;
     margin-top: 25px;
     text-align: center;
-    box-shadow: 0 4px 15px rgba(0,0,0,0.15);
-    transition: 0.3s ease-in-out;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.1);
+    transition: transform 0.2s ease-in-out;
 }
 .result-card:hover {
     transform: scale(1.02);
 }
 .cataract {
-    background: linear-gradient(135deg, #ffe5e5, #ffcccc);
+    background-color: #ffe6e6;
     color: #b30000;
+    border-left: 8px solid #ff4b4b;
 }
 .normal {
-    background: linear-gradient(135deg, #e8ffec, #ccffd8);
-    color: #006600;
+    background-color: #e6ffec;
+    color: #007a33;
+    border-left: 8px solid #00c853;
 }
 .irrelevant {
-    background: linear-gradient(135deg, #fff5cc, #ffe999);
-    color: #7a5a00;
+    background-color: #fff7e6;
+    color: #a66a00;
+    border-left: 8px solid #ffb300;
 }
 .metric-container {
     display: flex;
     justify-content: center;
-    gap: 30px;
-    margin-top: 10px;
+    gap: 40px;
+    margin-top: 15px;
+    flex-wrap: wrap;
 }
 .metric-box {
-    background-color: rgba(255,255,255,0.1);
+    background-color: rgba(255,255,255,0.7);
     border-radius: 12px;
     padding: 10px 20px;
     font-size: 16px;
+    font-weight: 600;
+    min-width: 150px;
 }
 </style>
 """, unsafe_allow_html=True)
@@ -118,7 +124,7 @@ if uploaded_file:
         st.markdown("---")
         st.subheader("📊 Hasil Analisis")
 
-        # Menentukan pesan & warna berdasarkan hasil
+        # Tentukan warna & pesan berdasarkan hasil
         if predicted_class.lower() == "cataract":
             css_class = "cataract"
             title = "⚠️ Indikasi KATARAK"
@@ -137,12 +143,12 @@ if uploaded_file:
         # ==========================
         st.markdown(f"""
         <div class='result-card {css_class}'>
-            <h2>{title}</h2>
-            <p style='font-size:17px; line-height:1.6; margin-bottom:10px;'>{desc}</p>
+            <h2 style='margin-bottom:10px;'>{title}</h2>
+            <p style='font-size:17px; line-height:1.6; margin-bottom:20px;'>{desc}</p>
             <div class='metric-container'>
-                <div class='metric-box'><b>Cataract:</b> {cataract_prob:.2f}%</div>
-                <div class='metric-box'><b>Normal:</b> {normal_prob:.2f}%</div>
-                <div class='metric-box'><b>Confidence:</b> {confidence:.2f}%</div>
+                <div class='metric-box' style='color:#b30000;'>Cataract: {cataract_prob:.2f}%</div>
+                <div class='metric-box' style='color:#007a33;'>Normal: {normal_prob:.2f}%</div>
+                <div class='metric-box' style='color:#555;'>Confidence: {confidence:.2f}%</div>
             </div>
         </div>
         """, unsafe_allow_html=True)

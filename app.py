@@ -47,16 +47,60 @@ def predict(image):
 # ==========================
 st.set_page_config(page_title="Deteksi Katarak AI", layout="wide")
 
+# CSS Kustom agar tampilan hasil lebih elegan
+st.markdown("""
+<style>
+body {
+    font-family: 'Poppins', sans-serif;
+}
+.result-card {
+    border-radius: 16px;
+    padding: 25px;
+    margin-top: 25px;
+    text-align: center;
+    box-shadow: 0 4px 15px rgba(0,0,0,0.15);
+    transition: 0.3s ease-in-out;
+}
+.result-card:hover {
+    transform: scale(1.02);
+}
+.cataract {
+    background: linear-gradient(135deg, #ffe5e5, #ffcccc);
+    color: #b30000;
+}
+.normal {
+    background: linear-gradient(135deg, #e8ffec, #ccffd8);
+    color: #006600;
+}
+.irrelevant {
+    background: linear-gradient(135deg, #fff5cc, #ffe999);
+    color: #7a5a00;
+}
+.metric-container {
+    display: flex;
+    justify-content: center;
+    gap: 30px;
+    margin-top: 10px;
+}
+.metric-box {
+    background-color: rgba(255,255,255,0.1);
+    border-radius: 12px;
+    padding: 10px 20px;
+    font-size: 16px;
+}
+</style>
+""", unsafe_allow_html=True)
+
 st.markdown("""
 <h2 style='text-align:center; color:#00BFA6;'>👁️ Aplikasi Deteksi Katarak Berbasis AI</h2>
-<p style='text-align:center;'>Unggah gambar mata untuk memeriksa indikasi katarak menggunakan model MobileNetV3 + Transformer.</p>
+<p style='text-align:center; color:gray;'>Unggah gambar mata untuk mendeteksi indikasi katarak menggunakan model MobileNetV3 + Vision Transformer.</p>
 """, unsafe_allow_html=True)
 
 uploaded_file = st.file_uploader("📤 Unggah Gambar Mata", type=["jpg", "jpeg", "png"])
 
 if uploaded_file:
     image = Image.open(uploaded_file)
-    st.image(image, caption="📷 Gambar yang diunggah", use_container_width=True)
+    st.image(image, caption="📷 Gambar yang diunggah", use_container_width=False, width=400)
 
     if st.button("🔍 Deteksi Katarak"):
         with st.spinner("Menganalisis gambar..."):
@@ -71,47 +115,34 @@ if uploaded_file:
             if confidence < 90:
                 predicted_class = "irrelevant"
 
-        # ==========================
-        # TAMPILAN HASIL
-        # ==========================
         st.markdown("---")
         st.subheader("📊 Hasil Analisis")
 
-        col1, col2 = st.columns(2)
-        with col1:
-            st.metric(label="🧠 Klasifikasi", value=predicted_class.upper())
-        with col2:
-            st.metric(label="📈 Tingkat Keyakinan", value=f"{confidence:.2f}%")
-
-        st.progress(float(confidence / 100))
-
-        # Warna hasil yang berbeda tergantung kelas
+        # Menentukan pesan & warna berdasarkan hasil
         if predicted_class.lower() == "cataract":
-            color_bg = "#ffe5e5"
-            color_text = "#b30000"
-            message = "⚠️ <b>Indikasi KATARAK</b><br>Segera konsultasikan ke dokter mata."
+            css_class = "cataract"
+            title = "⚠️ Indikasi KATARAK"
+            desc = "Segera konsultasikan ke dokter mata untuk pemeriksaan lebih lanjut."
         elif predicted_class.lower() == "normal":
-            color_bg = "#e8ffec"
-            color_text = "#006600"
-            message = "✅ <b>Tidak terdeteksi katarak</b><br>Mata tampak normal."
+            css_class = "normal"
+            title = "✅ Mata NORMAL"
+            desc = "Tidak terdeteksi tanda-tanda katarak. Tetap jaga kesehatan mata."
         else:
-            color_bg = "#fff3cd"
-            color_text = "#856404"
-            message = "❓ <b>Gambar Tidak Relevan</b><br>⚠️ Gambar tidak dikenali sebagai mata. Harap unggah foto mata yang jelas dan fokus."
+            css_class = "irrelevant"
+            title = "❓ Gambar Tidak Relevan"
+            desc = "⚠️ Gambar tidak dikenali sebagai mata. Harap unggah foto mata yang jelas dan fokus."
 
-        # Tampilan hasil akhir
+        # ==========================
+        # TAMPILAN HASIL BARU
+        # ==========================
         st.markdown(f"""
-        <div style='padding:18px; border-radius:12px; 
-                    background-color:{color_bg}; 
-                    color:{color_text}; 
-                    text-align:center; 
-                    font-size:18px; 
-                    line-height:1.6; 
-                    box-shadow: 0px 2px 6px rgba(0,0,0,0.1); 
-                    margin-top:15px;'>
-            {message}
-            <hr style='border:1px solid rgba(0,0,0,0.05); margin:10px 0;'>
-            <b style='color:#b30000;'>Cataract:</b> {cataract_prob:.2f}% &nbsp;&nbsp;
-            <b style='color:#006600;'>Normal:</b> {normal_prob:.2f}%
+        <div class='result-card {css_class}'>
+            <h2>{title}</h2>
+            <p style='font-size:17px; line-height:1.6; margin-bottom:10px;'>{desc}</p>
+            <div class='metric-container'>
+                <div class='metric-box'><b>Cataract:</b> {cataract_prob:.2f}%</div>
+                <div class='metric-box'><b>Normal:</b> {normal_prob:.2f}%</div>
+                <div class='metric-box'><b>Confidence:</b> {confidence:.2f}%</div>
+            </div>
         </div>
         """, unsafe_allow_html=True)

@@ -15,12 +15,11 @@ MODEL_PATH = os.path.join(MODEL_DIR, "cataract_model_latest.keras")
 LABELS_PATH = os.path.join(MODEL_DIR, "labels.json")
 
 # ==========================
-# REGISTER CUSTOM LAYER (compat untuk Keras <3 & >=3)
+# REGISTER CUSTOM LAYER
 # ==========================
 try:
     register_serializable = keras.saving.register_keras_serializable
 except AttributeError:
-    # fallback untuk Keras 2.x
     register_serializable = keras.utils.register_keras_serializable
 
 @register_serializable(package="Custom")
@@ -81,7 +80,7 @@ model = load_model()
 labels = load_labels()
 
 # ==========================
-# PREDIKSI
+# FUNGSI PREDIKSI
 # ==========================
 def predict(image):
     img = image.resize((224, 224))
@@ -90,62 +89,86 @@ def predict(image):
     return preds
 
 # ==========================
-# STREAMLIT SETUP
+# KONFIGURASI STREAMLIT
 # ==========================
 st.set_page_config(page_title="Deteksi Katarak AI", layout="wide")
 
-# CSS — Tampilan Modern, Card Jelas
-st.markdown("""
+# Sidebar untuk tema
+st.sidebar.title("🎨 Pengaturan Tampilan")
+theme = st.sidebar.radio("Pilih Tema:", ["🌞 Light Mode", "🌙 Dark Mode"])
+
+# Warna tema dinamis
+if "Dark" in theme:
+    bg_color = "#1e1e1e"
+    text_color = "#f1f1f1"
+    card_bg = "#2a2a2a"
+    shadow = "rgba(255,255,255,0.1)"
+else:
+    bg_color = "#f9f9f9"
+    text_color = "#222"
+    card_bg = "#ffffff"
+    shadow = "rgba(0,0,0,0.1)"
+
+# ==========================
+# CSS RESPONSIVE
+# ==========================
+st.markdown(f"""
 <style>
-.result-card {
+body {{
+    background-color: {bg_color};
+    color: {text_color};
+}}
+.result-card {{
     display: flex;
     align-items: center;
     justify-content: flex-start;
-    background-color: #f9f9f9;
+    background-color: {card_bg};
     border-radius: 14px;
-    box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+    box-shadow: 0 4px 12px {shadow};
     padding: 25px 35px;
     margin-top: 30px;
-    color: #222;
-}
-.result-icon {
+}}
+.result-icon {{
     font-size: 55px;
     margin-right: 20px;
-}
-.result-text h2 {
+}}
+.result-text h2 {{
     margin: 0;
     font-size: 24px;
     font-weight: 700;
-}
-.result-text p {
+    color: {text_color};
+}}
+.result-text p {{
     margin-top: 6px;
     margin-bottom: 10px;
     font-size: 15px;
-    color: #333;
-}
-.stats {
+    color: {text_color};
+}}
+.stats {{
     margin-top: 10px;
     display: flex;
-    gap: 12px;
-}
-.stat {
-    background-color: #e8f5e9;
-    padding: 8px 16px;
+    flex-wrap: wrap;
+    gap: 10px;
+}}
+.stat {{
+    background-color: rgba(0,0,0,0.08);
+    padding: 6px 14px;
     border-radius: 8px;
     font-weight: 600;
-}
-.cataract-card { border-left: 6px solid #d32f2f; }
-.normal-card { border-left: 6px solid #2e7d32; }
-.irrelevant-card { border-left: 6px solid #f9a825; }
+    color: {text_color};
+}}
+.cataract-card {{ border-left: 6px solid #ef5350; }}
+.normal-card {{ border-left: 6px solid #66bb6a; }}
+.irrelevant-card {{ border-left: 6px solid #fbc02d; }}
 </style>
 """, unsafe_allow_html=True)
 
 # ==========================
 # HEADER
 # ==========================
-st.markdown("""
-<h2 style='text-align:center; color:#00796b;'>👁️ Aplikasi Deteksi Katarak Berbasis AI</h2>
-<p style='text-align:center; color:#555;'>Unggah foto mata Anda untuk mendeteksi indikasi katarak dengan model MobileNetV3 + Vision Transformer.</p>
+st.markdown(f"""
+<h2 style='text-align:center; color:{text_color};'>👁️ Aplikasi Deteksi Katarak Berbasis AI</h2>
+<p style='text-align:center; color:{text_color}; opacity:0.8;'>Unggah foto mata Anda untuk mendeteksi indikasi katarak menggunakan model MobileNetV3 + Vision Transformer.</p>
 """, unsafe_allow_html=True)
 
 uploaded_file = st.file_uploader("📤 Unggah Gambar Mata", type=["jpg", "jpeg", "png"])
@@ -155,7 +178,7 @@ if uploaded_file:
     st.image(image, caption="📷 Gambar yang diunggah", width=320)
 
     if st.button("🔍 Deteksi Katarak"):
-        with st.spinner("Menganalisis gambar..."):
+        with st.spinner("🔎 Menganalisis gambar..."):
             preds = predict(image)
             classes = list(labels.values())
             cataract_prob = preds[0] * 100

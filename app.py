@@ -2,19 +2,15 @@ import os
 import io
 import json
 import glob
-import time
-from datetime import datetime
-
 import numpy as np
-from collections import Counter
 from PIL import Image
+from datetime import datetime
+from collections import Counter
 
 import streamlit as st
 import tensorflow as tf
 from tensorflow import keras
 from tensorflow.keras import layers
-
-# OpenCV: use headless in requirements (opencv-python-headless)
 import cv2
 
 # ==============================
@@ -23,7 +19,7 @@ import cv2
 st.set_page_config(page_title="Deteksi Katarak AI", page_icon="👁️", layout="wide")
 
 # ==============================
-# CONSTANTS & PATHS
+# PATHS & CONSTANTS
 # ==============================
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 MODEL_DIR = os.path.join(BASE_DIR, "models")
@@ -32,17 +28,16 @@ STYLE_PATH = os.path.join(BASE_DIR, "style.css")
 
 IMG_SIZE = (224, 224)
 CONFIDENCE_THRESHOLD = 0.85
-EMBED_DIM = 576  # penting agar custom TransformerBlock cocok saat load model
+EMBED_DIM = 576  # penting agar cocok dengan TransformerBlock
 
 # ==============================
-# EMBEDDED CSS (fallback jika style.css tidak ada)
+# CSS (fallback jika style.css tidak ada)
 # ==============================
 def apply_css():
     if os.path.exists(STYLE_PATH):
         with open(STYLE_PATH, "r", encoding="utf-8") as f:
             st.markdown(f"<style>{f.read()}</style>", unsafe_allow_html=True)
     else:
-        # fallback CSS embedded
         st.markdown("""
         <style>
         body{font-family:Inter, sans-serif;}
@@ -52,11 +47,10 @@ def apply_css():
         div.stButton > button{width:100%;padding:8px;border-radius:8px;}
         </style>
         """, unsafe_allow_html=True)
-
 apply_css()
 
 # ==============================
-# CUSTOM TRANSFORMER (needed to load model saved with it)
+# Custom TransformerBlock
 # ==============================
 @tf.keras.utils.register_keras_serializable()
 class TransformerBlock(layers.Layer):
@@ -87,23 +81,23 @@ class TransformerBlock(layers.Layer):
         return self.layernorm2(out1 + ffn_output)
 
 # ==============================
-# HELPERS: cari file model/weights terbaru
+# Helper: cari file terbaru
 # ==============================
 def latest_file(pattern):
     files = sorted(glob.glob(pattern))
     return files[-1] if files else None
 
 # ==============================
-# LOAD MODEL & CASCADES (cached)
+# Load Model & Cascade
 # ==============================
 @st.cache_resource
 def load_model_and_weights():
-    # cari model .keras terbaru (support timestamped names)
+    # cari file model .keras
     model_file = latest_file(os.path.join(MODEL_DIR, "cataract_model_final_*.keras")) \
-                 or latest_file(os.path.join(MODEL_DIR, "cataract_model_best*.keras")) \
-                 or os.path.join(MODEL_DIR, "cataract_model_best.keras")
+              or latest_file(os.path.join(MODEL_DIR, "cataract_model_best*.keras")) \
+              or os.path.join(MODEL_DIR, "cataract_model_final_20251112-142204.keras")
 
-    if not model_file or not os.path.exists(model_file):
+    if not os.path.exists(model_file):
         return None, f"Model file not found in {MODEL_DIR}. Expected .keras file."
 
     try:
@@ -111,46 +105,43 @@ def load_model_and_weights():
     except Exception as e:
         return None, f"Failed to load model: {e}"
 
-    # optional: cari bobot .weights.h5 terbaru dan muat jika ada
-    weight_file = latest_file(os.path.join(MODEL_DIR, "cataract_weights_*.weights.h5")) \
-                  or latest_file(os.path.join(MODEL_DIR, "cataract_model_best*.weights.h5")) \
-                  or os.path.join(MODEL_DIR, "cataract_weights.weights.h5")
+    # cari bobot .weights.h5
+    weight_file = latest_file(os.path.join(MODEL_DIR, "cataract_model_best*.weights.h5")) \
+               or latest_file(os.path.join(MODEL_DIR, "cataract_weights_*.weights.h5")) \
+               or os.path.join(MODEL_DIR, "cataract_model_best.weights.h5")
 
-    if weight_file and os.path.exists(weight_file):
+    if os.path.exists(weight_file):
         try:
             model.load_weights(weight_file)
             weight_msg = f"Weights loaded from {os.path.basename(weight_file)}"
         except Exception as e:
             weight_msg = f"Found weights but failed to load: {e}"
     else:
-        weight_msg = "No extra weights file found (using model internal weights)."
+        weight_msg = "No external weights found (using embedded model weights)."
 
-    return model, weight_msg
+    return model, f"Model loaded: {os.path.basename(model_file)} | {weight_msg}"
 
 @st.cache_resource
 def load_cascades():
     face_path = os.path.join(CASCADE_DIR, "haarcascade_frontalface_default.xml")
     eye_path = os.path.join(CASCADE_DIR, "haarcascade_eye.xml")
     if not (os.path.exists(face_path) and os.path.exists(eye_path)):
-        return None, None, "Cascade XML files not found (autozoom disabled)."
+        return None, None, "Cascade XML not found — autozoom disabled."
 
-    try:
-        face_c = cv2.CascadeClassifier(face_path)
-        eye_c = cv2.CascadeClassifier(eye_path)
-        if face_c.empty() or eye_c.empty():
-            return None, None, "Cascade loaded but classifiers empty (invalid files)."
-        return face_c, eye_c, "Cascades loaded."
-    except Exception as e:
-        return None, None, f"OpenCV cascade load error: {e}"
+    face_cascade = cv2.CascadeClassifier(face_path)
+    eye_cascade = cv2.CascadeClassifier(eye_path)
+    if face_cascade.empty() or eye_cascade.empty():
+        return None, None, "Cascade files invalid."
+    return face_cascade, eye_cascade, "Cascade loaded successfully."
 
 # ==============================
-# init resources
+# Load resources
 # ==============================
 model, model_msg = load_model_and_weights()
 FACE_CASCADE, EYE_CASCADE, cascade_msg = load_cascades()
 
 # ==============================
-# LOAD LABELS
+# Load Labels
 # ==============================
 labels_path = os.path.join(MODEL_DIR, "labels.json")
 if os.path.exists(labels_path):
@@ -163,7 +154,7 @@ else:
     labels = {"0": "normal", "1": "cataract"}
 
 # ==============================
-# SMALL UTIL FUNCTIONS
+# Image utilities
 # ==============================
 def preprocess_image_for_model(pil_image):
     img = pil_image.resize(IMG_SIZE)
@@ -178,66 +169,52 @@ def image_quality_heuristic(pil_image):
     gy, gx = np.gradient(arr)
     sharpness = np.sqrt(gx ** 2 + gy ** 2).var()
     mean_brightness = arr.mean()
-    if sharpness < 0.0005 or mean_brightness < 0.08 or mean_brightness > 0.95:
-        return False
-    return True
+    return not (sharpness < 0.0005 or mean_brightness < 0.08 or mean_brightness > 0.95)
 
 def crop_to_eye(pil_image, face_cascade, eye_cascade):
     if face_cascade is None or eye_cascade is None:
         return pil_image
-
     try:
         opencv_image = np.array(pil_image.convert('RGB'))
-        opencv_image_bgr = cv2.cvtColor(opencv_image, cv2.COLOR_RGB2BGR)
-        gray = cv2.cvtColor(opencv_image_bgr, cv2.COLOR_BGR2GRAY)
-
-        faces = face_cascade.detectMultiScale(gray, scaleFactor=1.1, minNeighbors=5, minSize=(50, 50))
+        gray = cv2.cvtColor(opencv_image, cv2.COLOR_RGB2GRAY)
+        faces = face_cascade.detectMultiScale(gray, 1.1, 5, minSize=(50, 50))
         if len(faces) == 0:
             return pil_image
-
-        x, y, w, h = sorted(faces, key=lambda f: f[2] * f[3], reverse=True)[0]
+        x, y, w, h = sorted(faces, key=lambda f: f[2]*f[3], reverse=True)[0]
         roi_gray = gray[y:y+h, x:x+w]
-        eyes = eye_cascade.detectMultiScale(roi_gray, scaleFactor=1.1, minNeighbors=5, minSize=(20, 20))
+        eyes = eye_cascade.detectMultiScale(roi_gray, 1.1, 5, minSize=(20, 20))
         if len(eyes) == 0:
             return pil_image
-
         ex, ey, ew, eh = eyes[0]
         eye_x_center = x + ex + ew // 2
         eye_y_center = y + ey + eh // 2
         zoom_size = int(max(ew, eh) * 2.5)
-
         final_x_start = max(0, eye_x_center - zoom_size // 2)
         final_y_start = max(0, eye_y_center - zoom_size // 2)
         final_x_end = min(pil_image.width, eye_x_center + zoom_size // 2)
         final_y_end = min(pil_image.height, eye_y_center + zoom_size // 2)
-
         if final_x_end <= final_x_start or final_y_end <= final_y_start:
             return pil_image
-
-        cropped_eye_pil = pil_image.crop((final_x_start, final_y_start, final_x_end, final_y_end))
-        return cropped_eye_pil
+        return pil_image.crop((final_x_start, final_y_start, final_x_end, final_y_end))
     except Exception:
         return pil_image
 
 # ==============================
-# UI HEADER & STATUS MESSAGES
+# UI HEADER
 # ==============================
-st.markdown("<h1 class='main-header'>👁️ <b>Deteksi Katarak Berbasis AI</b></h1>", unsafe_allow_html=True)
-st.markdown("<p class='subheader'>Menggunakan OpenCV Auto Zoom untuk fokus ke mata</p>", unsafe_allow_html=True)
-st.markdown(f"<div class='disclaimer'>⚠️ Disclaimer: Hasil hanya indikator. Konsultasikan ke profesional medis.</div>", unsafe_allow_html=True)
+st.markdown("<h1 class='main-header'>👁️ Deteksi Katarak Berbasis AI</h1>", unsafe_allow_html=True)
+st.markdown("<p class='subheader'>Menggunakan OpenCV Auto Zoom untuk fokus ke area mata</p>", unsafe_allow_html=True)
+st.markdown("<div class='disclaimer'>⚠️ Hasil ini hanya indikasi awal. Konsultasikan dengan dokter mata profesional.</div>", unsafe_allow_html=True)
 
 if model is None:
     st.error(f"❌ Model tidak tersedia. {model_msg}")
 else:
-    st.info(f"Model siap. {model_msg}")
+    st.success(f"✅ {model_msg}")
 
-if "Cascade" in cascade_msg or "loaded" in cascade_msg:
-    st.success(cascade_msg)
-else:
-    st.warning(cascade_msg)
+st.info(cascade_msg)
 
 # ==============================
-# MAIN LAYOUT
+# MAIN UI
 # ==============================
 col1, col2 = st.columns(2)
 
@@ -245,72 +222,54 @@ with col1:
     st.markdown("## 🖼️ Unggah Gambar Mata")
     uploaded_file = st.file_uploader("Pilih gambar mata (JPG, JPEG, PNG)", type=["jpg", "jpeg", "png"])
 
-    if uploaded_file:
-        try:
-            image_bytes = uploaded_file.read()
-            pil_img_original = Image.open(io.BytesIO(image_bytes)).convert("RGB")
-            st.image(pil_img_original, caption="Gambar Asli", use_column_width=True)
-        except Exception as e:
-            st.error(f"Gagal buka gambar: {e}")
-            pil_img_original = None
+    if uploaded_file and model:
+        image_bytes = uploaded_file.read()
+        pil_img_original = Image.open(io.BytesIO(image_bytes)).convert("RGB")
+        st.image(pil_img_original, caption="Gambar Asli", use_column_width=True)
 
-        if st.button("🚀 Mulai Prediksi") and pil_img_original is not None:
-            if model is None:
-                st.error("Model belum tersedia. Tidak dapat melakukan prediksi.")
-            else:
-                with st.spinner("Analisis..."):
-                    try:
-                        # Auto zoom jika cascade ada
-                        if FACE_CASCADE is not None and EYE_CASCADE is not None:
-                            pil_img_cropped = crop_to_eye(pil_img_original, FACE_CASCADE, EYE_CASCADE)
-                            if pil_img_cropped != pil_img_original:
-                                st.success("✅ Area mata berhasil di-zoom.")
-                                st.image(pil_img_cropped, caption="Crop Mata (Input Model)", use_column_width=True)
-                                pil_img_final = pil_img_cropped
-                            else:
-                                st.info("ℹ️ Auto-zoom tidak melakukan crop — menggunakan gambar asli.")
-                                pil_img_final = pil_img_original
-                        else:
-                            pil_img_final = pil_img_original
-                            st.warning("⚠️ Auto-zoom tidak aktif. Menggunakan gambar asli.")
+        if st.button("🚀 Mulai Prediksi"):
+            with st.spinner("Menganalisis gambar..."):
+                try:
+                    pil_img_final = crop_to_eye(pil_img_original, FACE_CASCADE, EYE_CASCADE)
+                    if pil_img_final != pil_img_original:
+                        st.success("✅ Auto Zoom berhasil mendeteksi area mata.")
+                        st.image(pil_img_final, caption="Gambar Mata (Crop)", use_column_width=True)
 
-                        # quality check
-                        if not image_quality_heuristic(pil_img_final):
-                            st.warning("⚠️ Gambar dianggap kurang berkualitas (buram/terlalu terang/gelap). Coba unggah ulang.")
-                            st.stop()
+                    if not image_quality_heuristic(pil_img_final):
+                        st.warning("⚠️ Gambar buram/gelap/terlalu terang. Coba unggah ulang.")
+                        st.stop()
 
-                        # preprocessing & predict
-                        X = preprocess_image_for_model(pil_img_final)
-                        preds = model.predict(X, verbose=0)[0]
-                        preds = np.array(preds).astype(float)
+                    X = preprocess_image_for_model(pil_img_final)
+                    preds = model.predict(X, verbose=0)[0]
+                    top_idx = int(np.argmax(preds))
+                    top_conf = float(preds[top_idx])
+                    predicted_label = labels.get(str(top_idx), "unknown")
 
-                        top_idx = int(np.argmax(preds))
-                        top_conf = float(preds[top_idx])
+                    st.write("#### Probabilitas per kelas:")
+                    for i, v in enumerate(preds):
+                        lbl = labels.get(str(i), str(i))
+                        st.write(f"- **{lbl.capitalize()}**: {v*100:.2f}%")
 
-                        if top_conf < CONFIDENCE_THRESHOLD:
-                            st.warning(f"Kepercayaan terlalu rendah ({top_conf*100:.2f}%). Unggah gambar yang lebih jelas.")
-                            st.stop()
+                    if top_conf < CONFIDENCE_THRESHOLD:
+                        st.warning(f"Kepercayaan rendah ({top_conf*100:.2f}%)")
+                    elif predicted_label == "normal":
+                        st.success(f"✅ Mata terdeteksi NORMAL — {top_conf*100:.2f}%")
+                    elif predicted_label == "cataract":
+                        st.error(f"⚠️ Indikasi KATARAK — {top_conf*100:.2f}%")
+                    else:
+                        st.info(f"Hasil: {predicted_label} ({top_conf*100:.2f}%)")
 
-                        predicted_label = labels.get(str(top_idx), "unknown")
-                        st.write("#### Probabilitas per kelas:")
-                        for i, v in enumerate(preds):
-                            lbl = labels.get(str(i), str(i))
-                            st.write(f"- **{lbl.capitalize()}**: {v*100:.2f}%")
-
-                        if predicted_label == "normal":
-                            st.success(f"✅ Prediksi: NORMAL — {top_conf*100:.2f}%")
-                        elif predicted_label == "cataract":
-                            st.error(f"⚠️ Prediksi: INDIKASI KATARAK — {top_conf*100:.2f}%")
-                        else:
-                            st.info(f"Hasil: {predicted_label} — {top_conf*100:.2f}%")
-
-                    except Exception as e:
-                        st.error(f"Kesalahan saat prediksi: {e}")
+                except Exception as e:
+                    st.error(f"Gagal prediksi: {e}")
 
 with col2:
     st.markdown("## ℹ️ Informasi Katarak")
     st.write("""
-    Katarak adalah kekeruhan pada lensa mata yang menyebabkan penglihatan kabur. 
-    Gejala: penglihatan buram, silau, warna pudar, kesulitan di malam hari.
-    Faktor risiko: usia lanjut, diabetes, merokok, paparan UV, riwayat cedera.
+    Katarak adalah kekeruhan pada lensa mata yang menyebabkan penglihatan kabur.  
+    **Gejala umum:**  
+    - Penglihatan buram atau berkabut  
+    - Warna tampak pudar  
+    - Silau saat melihat cahaya terang  
+    - Kesulitan melihat di malam hari  
     """)
+

@@ -16,7 +16,6 @@ CONFIDENCE_THRESHOLD = 0.90  # ambang batas gambar tidak relevan
 
 # ==========================
 # DEFINISI CUSTOM LAYER
-# (harus sama dengan saat training)
 # ==========================
 @tf.keras.utils.register_keras_serializable()
 class TransformerBlock(tf.keras.layers.Layer):
@@ -59,7 +58,6 @@ def load_model():
     if not os.path.exists(MODEL_PATH):
         st.error("❌ Model tidak ditemukan! Pastikan file 'cataract_model_latest.keras' ada di folder 'models/'.")
         st.stop()
-    # custom_objects penting agar TransformerBlock dikenali
     return tf.keras.models.load_model(MODEL_PATH, custom_objects={"TransformerBlock": TransformerBlock}, compile=False)
 
 @st.cache_data
@@ -74,51 +72,63 @@ model = load_model()
 labels = load_labels()
 
 # ==========================
-# TEMA DAN CSS (DARK/LIGHT MODE)
+# KONFIGURASI HALAMAN
 # ==========================
-st.sidebar.title("⚙️ Pengaturan Tampilan")
-theme_choice = st.sidebar.radio("🎨 Pilih Mode", ["🌙 Dark Mode", "☀️ Light Mode"])
+st.set_page_config(page_title="Deteksi Katarak AI", layout="wide")
 
-if theme_choice == "🌙 Dark Mode":
-    bg_color = "#0E1117"
-    text_color = "#EDEDED"
-    accent_color = "#00BFA6"
-    card_bg = "linear-gradient(145deg, #1E1E1E, #171717)"
-else:
-    bg_color = "#FFFFFF"
-    text_color = "#222222"
-    accent_color = "#00BFA6"
-    card_bg = "#F8F9FA"
-
-st.markdown(f"""
+# ==========================
+# STYLING RESPONSIF DAN ANIMASI
+# ==========================
+st.markdown("""
 <style>
-body {{
-    background-color: {bg_color};
-    color: {text_color};
+body {
     font-family: 'Inter', sans-serif;
-}}
-h2, h3, h4, p, label {{
-    color: {text_color} !important;
-}}
-.stButton>button {{
-    background-color: {accent_color};
-    color: white;
-    border-radius: 10px;
-    padding: 0.6em 1.2em;
-    border: none;
-    font-weight: 600;
-}}
-.stButton>button:hover {{
-    background-color: #02d8bd;
-}}
-.result-card {{
-    background: {card_bg};
+}
+h2 {
+    text-align: center;
+    color: #00BFA6;
+    font-weight: 700;
+}
+.uploaded-img {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    margin-top: 15px;
+}
+.uploaded-img img {
+    max-width: 350px;
+    border-radius: 12px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+    transition: transform 0.4s ease-in-out;
+}
+.uploaded-img img:hover {
+    transform: scale(1.1);
+}
+.result-card {
+    background: linear-gradient(135deg, #F8F9FA, #FFFFFF);
     padding: 25px;
     border-radius: 16px;
-    box-shadow: 0 6px 20px rgba(0,0,0,0.2);
+    box-shadow: 0 6px 20px rgba(0,0,0,0.15);
     text-align: center;
     margin-top: 20px;
-}}
+    animation: fadeIn 1s ease-in-out;
+}
+@keyframes fadeIn {
+    from { opacity: 0; transform: translateY(20px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+.glow-red {
+    box-shadow: 0 0 25px 8px rgba(255, 75, 75, 0.7);
+}
+.glow-green {
+    box-shadow: 0 0 25px 8px rgba(75, 181, 67, 0.7);
+}
+.glow-orange {
+    box-shadow: 0 0 25px 8px rgba(255, 165, 0, 0.7);
+}
+@media (max-width: 600px) {
+    .uploaded-img img { max-width: 250px; }
+}
 </style>
 """, unsafe_allow_html=True)
 
@@ -134,18 +144,18 @@ def predict(image):
 # ==========================
 # UI STREAMLIT
 # ==========================
-st.set_page_config(page_title="Deteksi Katarak AI", layout="wide")
-
-st.markdown(f"""
-<h2 style='text-align:center; color:{accent_color}; font-weight:700;'>👁️ Deteksi Katarak Berbasis AI</h2>
-<p style='text-align:center;'>Unggah gambar mata untuk memeriksa indikasi katarak dengan model <b>MobileNetV3 + Transformer</b>.</p>
+st.markdown("""
+<h2>👁️ Deteksi Katarak Berbasis AI</h2>
+<p style='text-align:center;'>Unggah gambar mata untuk mendeteksi indikasi katarak menggunakan model MobileNetV3 + Transformer.</p>
 """, unsafe_allow_html=True)
 
 uploaded_file = st.file_uploader("📤 Unggah Gambar Mata", type=["jpg", "jpeg", "png"])
 
 if uploaded_file:
     image = Image.open(uploaded_file)
-    st.image(image, caption="🖼️ Gambar yang diunggah", use_column_width=True)
+    st.markdown("<div class='uploaded-img'>", unsafe_allow_html=True)
+    st.image(image, caption="🖼️ Gambar yang diunggah", use_container_width=False)
+    st.markdown("</div>", unsafe_allow_html=True)
 
     if st.button("🔍 Deteksi Katarak"):
         with st.spinner("🧠 Menganalisis gambar..."):
@@ -156,31 +166,25 @@ if uploaded_file:
             confidence = np.max(preds)
             predicted_class = classes[np.argmax(preds)]
 
-        # Tentukan hasil akhir
+        # Tentukan hasil
         if confidence < CONFIDENCE_THRESHOLD:
             status_label = "❓ Gambar Tidak Relevan"
             status_desc = "⚠️ Gambar tidak dikenali sebagai mata. Harap unggah foto mata yang jelas dan fokus."
             status_color = "#FFA500"
+            glow_class = "glow-orange"
         elif predicted_class.lower() == "cataract":
             status_label = "⚠️ Indikasi Katarak"
             status_desc = "Model mendeteksi indikasi katarak. Sebaiknya konsultasi ke dokter mata."
             status_color = "#FF4B4B"
+            glow_class = "glow-red"
         else:
             status_label = "✅ Normal"
             status_desc = "Tidak terdeteksi tanda-tanda katarak."
             status_color = "#4BB543"
+            glow_class = "glow-green"
 
-        # ==========================
-        # TAMPILKAN HASIL
-        # ==========================
         st.markdown("<hr>", unsafe_allow_html=True)
         st.subheader("📊 Hasil Analisis")
-
-        col1, col2 = st.columns(2)
-        with col1:
-            st.metric(label="🧠 Klasifikasi", value=status_label)
-        with col2:
-            st.metric(label="📈 Keyakinan", value=f"{confidence*100:.2f}%")
 
         # Grafik probabilitas
         fig = go.Figure(
@@ -188,7 +192,7 @@ if uploaded_file:
                 go.Bar(
                     x=["Cataract", "Normal"],
                     y=[cataract_prob, normal_prob],
-                    marker_color=[status_color if p == np.max(preds)*100 else "#00BFA6" for p in [cataract_prob, normal_prob]],
+                    marker_color=["#FF4B4B", "#4BB543"],
                     text=[f"{cataract_prob:.1f}%", f"{normal_prob:.1f}%"],
                     textposition="outside"
                 )
@@ -198,18 +202,19 @@ if uploaded_file:
             title="Probabilitas Klasifikasi",
             xaxis_title="Kelas",
             yaxis_title="Probabilitas (%)",
-            template="plotly_dark" if theme_choice == "🌙 Dark Mode" else "plotly_white",
-            height=350
+            height=350,
+            template="plotly_white"
         )
         st.plotly_chart(fig, use_container_width=True)
 
-        # Kartu hasil
+        # Kartu hasil dengan animasi glow
         st.markdown(f"""
-        <div class='result-card'>
+        <div class='result-card {glow_class}'>
             <h3 style='color:{status_color}; font-weight:700;'>{status_label}</h3>
             <p>{status_desc}</p>
             <hr>
             <b style='color:#FF4B4B;'>Cataract:</b> {cataract_prob:.2f}%<br>
-            <b style='color:#4BB543;'>Normal:</b> {normal_prob:.2f}%
+            <b style='color:#4BB543;'>Normal:</b> {normal_prob:.2f}%<br>
+            <b>Kepercayaan model:</b> {confidence*100:.2f}%
         </div>
         """, unsafe_allow_html=True)

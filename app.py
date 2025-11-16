@@ -33,7 +33,8 @@ class TransformerBlock(layers.Layer):
     def build(self, input_shape):
         embed_dim = input_shape[-1]
         self.att = layers.MultiHeadAttention(
-            num_heads=self.num_heads, key_dim=embed_dim // self.num_heads
+            num_heads=self.num_heads, 
+            key_dim=embed_dim // self.num_heads
         )
         self.ffn = keras.Sequential([
             layers.Dense(self.ff_dim, activation="relu"),
@@ -61,6 +62,7 @@ def load_model():
     if not os.path.exists(MODEL_PATH):
         st.error("❌ Model tidak ditemukan!")
         st.stop()
+
     try:
         return tf.keras.models.load_model(
             MODEL_PATH,
@@ -93,11 +95,11 @@ def predict(image):
 # ==========================
 st.set_page_config(page_title="Deteksi Katarak AI", layout="wide")
 
-# Sidebar untuk tema
+# Sidebar Tema
 st.sidebar.title("🎨 Pengaturan Tampilan")
 theme = st.sidebar.radio("Pilih Tema:", ["🌞 Light Mode", "🌙 Dark Mode"])
 
-# Warna tema dinamis
+# Warna tema
 if "Dark" in theme:
     bg_color = "#1e1e1e"
     text_color = "#f1f1f1"
@@ -110,7 +112,7 @@ else:
     shadow = "rgba(0,0,0,0.1)"
 
 # ==========================
-# CSS RESPONSIVE
+# CSS
 # ==========================
 st.markdown(f"""
 <style>
@@ -167,10 +169,17 @@ body {{
 # HEADER
 # ==========================
 st.markdown(f"""
-<h2 style='text-align:center; color:{text_color};'>👁️ Aplikasi Deteksi Katarak Berbasis AI</h2>
-<p style='text-align:center; color:{text_color}; opacity:0.8;'>Unggah foto mata Anda untuk mendeteksi indikasi katarak menggunakan model MobileNetV3 + Vision Transformer.</p>
+<h2 style='text-align:center; color:{text_color};'>
+    👁️ Aplikasi Deteksi Katarak Berbasis AI
+</h2>
+<p style='text-align:center; color:{text_color}; opacity:0.8;'>
+    Unggah foto mata Anda untuk mendeteksi indikasi katarak menggunakan model AI MobileNetV3 + Vision Transformer.
+</p>
 """, unsafe_allow_html=True)
 
+# ==========================
+# UPLOAD GAMBAR
+# ==========================
 uploaded_file = st.file_uploader("📤 Unggah Gambar Mata", type=["jpg", "jpeg", "png"])
 
 if uploaded_file:
@@ -179,25 +188,45 @@ if uploaded_file:
 
     if st.button("🔍 Deteksi Katarak"):
         with st.spinner("🔎 Menganalisis gambar..."):
+
+            # Hasil prediksi (2 kelas)
             preds = predict(image)
             classes = list(labels.values())
+
             cataract_prob = preds[0] * 100
             normal_prob = preds[1] * 100
-            confidence = np.max(preds) * 100
-            predicted_class = classes[np.argmax(preds)]
 
-            if confidence < 90:
+            predicted_class = classes[np.argmax(preds)]
+            confidence = np.max(preds) * 100
+
+            # Aturan deteksi gambar tidak relevan
+            if confidence < 70:  # bisa dinaikkan jika ingin lebih ketat
                 predicted_class = "irrelevant"
 
         # ==========================
         # KARTU HASIL
         # ==========================
         if predicted_class.lower() == "cataract":
-            icon, title, desc, card_class = "⚠️", "Indikasi Katarak", "Segera konsultasikan ke dokter mata untuk pemeriksaan lebih lanjut.", "cataract-card"
+            icon, title, desc, card_class = (
+                "⚠️", 
+                "Indikasi Katarak", 
+                "Segera konsultasikan ke dokter mata untuk pemeriksaan lebih lanjut.",
+                "cataract-card"
+            )
         elif predicted_class.lower() == "normal":
-            icon, title, desc, card_class = "✅", "Mata Normal", "Tidak ditemukan tanda-tanda katarak. Tetap jaga kesehatan mata Anda.", "normal-card"
+            icon, title, desc, card_class = (
+                "✅", 
+                "Mata Normal",
+                "Tidak ditemukan tanda-tanda katarak.",
+                "normal-card"
+            )
         else:
-            icon, title, desc, card_class = "❓", "Gambar Tidak Relevan", "Gambar tidak dikenali sebagai mata. Harap unggah foto mata yang jelas dan fokus.", "irrelevant-card"
+            icon, title, desc, card_class = (
+                "❓",
+                "Gambar Tidak Relevan",
+                "Gambar tidak dikenali sebagai mata. Harap unggah foto mata yang jelas.",
+                "irrelevant-card"
+            )
 
         st.markdown(f"""
         <div class="result-card {card_class}">

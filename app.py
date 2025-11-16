@@ -110,11 +110,17 @@ labels = load_labels()
 # FUNGSI PREDIKSI
 # ==========================
 def predict(image):
+    # Pastikan gambar menjadi RGB (buang alpha channel)
+    if image.mode != "RGB":
+        image = image.convert("RGB")
+
+    # Resize & normalisasi
     img = image.resize((224, 224))
     img_array = np.expand_dims(np.array(img) / 255.0, axis=0)
+
+    # Prediksi
     preds = model.predict(img_array, verbose=0)[0]
     return preds
-
 
 # ==========================
 # STREAMLIT UI

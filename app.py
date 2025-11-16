@@ -11,7 +11,7 @@ import streamlit as st
 # KONFIGURASI
 # ==========================
 MODEL_DIR = "models"
-MODEL_PATH = os.path.join(MODEL_DIR, "cataract_model_latest.keras")
+MODEL_PATH = os.path.join(MODEL_DIR, "model_final.keras")
 LABELS_PATH = os.path.join(MODEL_DIR, "labels.json")
 
 # ==========================

@@ -1,161 +1,131 @@
-import os
-import json
+import streamlit as st
 import numpy as np
 import tensorflow as tf
-from tensorflow import keras
-from tensorflow.keras import layers
 from PIL import Image
-import streamlit as st
+import cv2
+import json
+import os
 
-# ==========================
-# KONFIGURASI
-# ==========================
-MODEL_DIR = "models"
-MODEL_PATH = os.path.join(MODEL_DIR, "model_final.keras")
-LABELS_PATH = os.path.join(MODEL_DIR, "labels.json")
+# =====================================================
+# LOAD LABELS
+# =====================================================
+LABELS = {"0": "cataract", "1": "normal"}
 
-# ==========================
-# REGISTER CUSTOM LAYER
-# ==========================
+# =====================================================
+# LOAD MODEL
+# =====================================================
+MODEL_PATH = "models/final_model.keras"   # FIX
+model = None
+
 try:
-    register_serializable = keras.saving.register_keras_serializable
-except:
-    register_serializable = keras.utils.register_keras_serializable
+    model = tf.keras.models.load_model(MODEL_PATH, compile=False)
+    st.success(f"Model loaded: {MODEL_PATH}")
+except Exception as e:
+    st.error(f"Gagal memuat model: {e}")
 
-@register_serializable(package="Custom")
-class PositionEmbedding(layers.Layer):
-    """Harus ada, karena disimpan dalam file .keras hasil training."""
-    def build(self, input_shape):
-        seq_len = input_shape[1]
-        dim = input_shape[2]
-        self.pos_emb = self.add_weight(
-            shape=(seq_len, dim),
-            initializer="random_normal",
-            trainable=True,
-            name="pos_embedding"
-        )
-        super().build(input_shape)
+# =====================================================
+# HAAR CASCADE (FACE + EYE)
+# =====================================================
+FACE_CASCADE = cv2.CascadeClassifier("haarcascade/haarcascade_frontalface_default.xml")
+EYE_CASCADE = cv2.CascadeClassifier("haarcascade/haarcascade_eye.xml")
 
-    def call(self, x):
-        return x + self.pos_emb
+def contains_eye(pil_img):
+    img = np.array(pil_img)
+    gray = cv2.cvtColor(img, cv2.COLOR_RGB2GRAY)
 
+    faces = FACE_CASCADE.detectMultiScale(gray, 1.2, 5)
+    eyes = EYE_CASCADE.detectMultiScale(gray, 1.2, 4)
 
-@register_serializable(package="Custom")
-class TransformerBlock(layers.Layer):
-    def __init__(self, num_heads=4, ff_dim=128, dropout=0.1, **kwargs):
-        super().__init__(**kwargs)
-        self.num_heads = num_heads
-        self.ff_dim = ff_dim
-        self.dropout = dropout
-
-    def build(self, input_shape):
-        embed_dim = input_shape[-1]
-
-        # Hindari error key_dim=0
-        key_dim = max(1, embed_dim // self.num_heads)
-
-        self.att = layers.MultiHeadAttention(
-            num_heads=self.num_heads,
-            key_dim=key_dim
-        )
-        self.ffn = keras.Sequential([
-            layers.Dense(self.ff_dim, activation="relu"),
-            layers.Dense(embed_dim)
-        ])
-        self.layernorm1 = layers.LayerNormalization(epsilon=1e-6)
-        self.layernorm2 = layers.LayerNormalization(epsilon=1e-6)
-        self.dropout1 = layers.Dropout(self.dropout)
-        self.dropout2 = layers.Dropout(self.dropout)
-        super().build(input_shape)
-
-    def call(self, inputs, training=False):
-        attn_output = self.att(inputs, inputs)
-        attn_output = self.dropout1(attn_output, training=training)
-        out1 = self.layernorm1(inputs + attn_output)
-
-        ffn_output = self.ffn(out1)
-        ffn_output = self.dropout2(ffn_output, training=training)
-
-        return self.layernorm2(out1 + ffn_output)
+    return len(faces) > 0 or len(eyes) > 0
 
 
-# ==========================
-# LOAD MODEL & LABELS
-# ==========================
-@st.cache_resource
-def load_model():
-    try:
-        model = keras.models.load_model(
-            MODEL_PATH,
-            compile=False,
-            custom_objects={
-                "TransformerBlock": TransformerBlock,
-                "PositionEmbedding": PositionEmbedding
-            }
-        )
-        return model
-    except Exception as e:
-        st.error(f"❌ Gagal memuat model:\n{e}")
-        st.stop()
+# =====================================================
+# PREPROCESS GAMBAR UNTUK MODEL
+# =====================================================
+IMG_SIZE = (224, 224)
 
-@st.cache_data
-def load_labels():
-    with open(LABELS_PATH, "r") as f:
-        return json.load(f)
+def preprocess(img):
+    img = img.resize(IMG_SIZE)
+    arr = np.array(img).astype("float32") / 255.0
+    return np.expand_dims(arr, axis=0)
 
-model = load_model()
-labels = load_labels()
 
-# ==========================
-# FUNGSI PREDIKSI
-# ==========================
-def predict(image):
-    # Pastikan gambar menjadi RGB (buang alpha channel)
-    if image.mode != "RGB":
-        image = image.convert("RGB")
-
-    # Resize & normalisasi
-    img = image.resize((224, 224))
-    img_array = np.expand_dims(np.array(img) / 255.0, axis=0)
-
-    # Prediksi
-    preds = model.predict(img_array, verbose=0)[0]
+# =====================================================
+# PREDIKSI LABEL
+# =====================================================
+def predict(img):
+    if model is None:
+        raise RuntimeError("Model belum dimuat.")
+    arr = preprocess(img)
+    preds = model.predict(arr)[0]
     return preds
 
-# ==========================
+
+# =====================================================
 # STREAMLIT UI
-# ==========================
-st.title("👁️ Deteksi Katarak Berbasis AI")
+# =====================================================
+st.title("🔍 Eye Cataract Classifier + Eye Detector + Grad-CAM")
+st.write("Unggah gambar mata untuk dideteksi.")
 
-uploaded_file = st.file_uploader("📤 Upload foto mata", type=["jpg", "jpeg", "png"])
+uploaded_file = st.file_uploader("Upload gambar", type=["jpg", "jpeg", "png"])
 
-if uploaded_file:
-    image = Image.open(uploaded_file)
-    st.image(image, caption="Gambar diunggah", width=300)
+if uploaded_file is not None:
+    image = Image.open(uploaded_file).convert("RGB")
+    st.image(image, caption="Gambar diunggah", use_column_width=True)
 
     if st.button("🔍 Deteksi"):
-        with st.spinner("Menganalisis gambar..."):
-            preds = predict(image)
+        with st.spinner("Menganalisis..."):
 
+            # 1. CEK APAKAH GAMBAR MENGANDUNG MATA
+            if not contains_eye(image):
+                st.warning("⚠ Gambar tidak relevan (tidak terdeteksi mata/wajah)")
+                st.stop()
+
+            # 2. PREDIKSI MODEL
+            preds = predict(image)
             cataract_prob = preds[0] * 100
             normal_prob = preds[1] * 100
             confidence = np.max(preds) * 100
 
-            classes = list(labels.values())
-            predicted = classes[np.argmax(preds)]
-
+            # 3. TENTUKAN LABEL
             if confidence < 70:
-                predicted = "irrelevant"
+                label = "irrelevant"
+            else:
+                label = LABELS[str(np.argmax(preds))]
 
-        st.subheader("Hasil Deteksi")
+            st.subheader("Hasil Prediksi:")
+            st.write(f"**Prediksi**: {label}")
+            st.write(f"Confidence: {confidence:.2f}%")
+            st.progress(int(confidence))
 
-        if predicted == "cataract":
-            st.error(f"⚠️ Katarak terdeteksi ({cataract_prob:.2f}%)")
-        elif predicted == "normal":
-            st.success(f"✅ Mata Normal ({normal_prob:.2f}%)")
-        else:
-            st.warning("❓ Gambar tidak relevan / bukan mata")
+            # 4. Grad-CAM
+            if st.checkbox("Tampilkan Grad-CAM"):
+                import tensorflow.keras.backend as K
 
-        st.write(f"**Confidence:** {confidence:.2f}%")
-        st.write(f"Cataract: {cataract_prob:.2f}%")
-        st.write(f"Normal: {normal_prob:.2f}%")
+                last_conv_layer = model.get_layer(index=-5)
+                grad_model = tf.keras.models.Model(
+                    [model.inputs],
+                    [last_conv_layer.output, model.output]
+                )
+
+                img_arr = preprocess(image)
+                with tf.GradientTape() as tape:
+                    conv_output, preds_val = grad_model(img_arr)
+                    class_idx = tf.argmax(preds_val[0])
+                    loss = preds_val[:, class_idx]
+
+                grads = tape.gradient(loss, conv_output)
+                pooled_grads = tf.reduce_mean(grads, axis=(0, 1, 2))
+                heatmap = conv_output[0] @ pooled_grads[..., tf.newaxis]
+                heatmap = tf.squeeze(heatmap)
+                heatmap = np.maximum(heatmap, 0) / np.max(heatmap)
+
+                heatmap = cv2.resize(
+                    heatmap.numpy(), (image.width, image.height))
+                heatmap = np.uint8(255 * heatmap)
+                heatmap = cv2.applyColorMap(heatmap, cv2.COLORMAP_JET)
+
+                superimposed = cv2.addWeighted(
+                    np.array(image), 0.6, heatmap, 0.4, 0)
+                st.image(superimposed, caption="Grad-CAM",
+                         use_column_width=True)

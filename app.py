@@ -11,7 +11,7 @@ import streamlit as st
 # KONFIGURASI
 # ==========================
 MODEL_DIR = "models"
-MODEL_PATH = os.path.join(MODEL_DIR, "model_final.keras")  # sesuai direktori Anda
+MODEL_PATH = os.path.join(MODEL_DIR, "model_final.keras")
 LABELS_PATH = os.path.join(MODEL_DIR, "labels.json")
 
 # ==========================
@@ -23,6 +23,24 @@ except:
     register_serializable = keras.utils.register_keras_serializable
 
 @register_serializable(package="Custom")
+class PositionEmbedding(layers.Layer):
+    """Harus ada, karena disimpan dalam file .keras hasil training."""
+    def build(self, input_shape):
+        seq_len = input_shape[1]
+        dim = input_shape[2]
+        self.pos_emb = self.add_weight(
+            shape=(seq_len, dim),
+            initializer="random_normal",
+            trainable=True,
+            name="pos_embedding"
+        )
+        super().build(input_shape)
+
+    def call(self, x):
+        return x + self.pos_emb
+
+
+@register_serializable(package="Custom")
 class TransformerBlock(layers.Layer):
     def __init__(self, num_heads=4, ff_dim=128, dropout=0.1, **kwargs):
         super().__init__(**kwargs)
@@ -32,9 +50,13 @@ class TransformerBlock(layers.Layer):
 
     def build(self, input_shape):
         embed_dim = input_shape[-1]
+
+        # Hindari error key_dim=0
+        key_dim = max(1, embed_dim // self.num_heads)
+
         self.att = layers.MultiHeadAttention(
             num_heads=self.num_heads,
-            key_dim=embed_dim // self.num_heads
+            key_dim=key_dim
         )
         self.ffn = keras.Sequential([
             layers.Dense(self.ff_dim, activation="relu"),
@@ -50,8 +72,10 @@ class TransformerBlock(layers.Layer):
         attn_output = self.att(inputs, inputs)
         attn_output = self.dropout1(attn_output, training=training)
         out1 = self.layernorm1(inputs + attn_output)
+
         ffn_output = self.ffn(out1)
         ffn_output = self.dropout2(ffn_output, training=training)
+
         return self.layernorm2(out1 + ffn_output)
 
 
@@ -64,7 +88,10 @@ def load_model():
         model = keras.models.load_model(
             MODEL_PATH,
             compile=False,
-            custom_objects={"TransformerBlock": TransformerBlock}
+            custom_objects={
+                "TransformerBlock": TransformerBlock,
+                "PositionEmbedding": PositionEmbedding
+            }
         )
         return model
     except Exception as e:
@@ -111,7 +138,6 @@ if uploaded_file:
             classes = list(labels.values())
             predicted = classes[np.argmax(preds)]
 
-            # gambar tidak relevan (jika confidence rendah)
             if confidence < 70:
                 predicted = "irrelevant"
 

@@ -88,7 +88,7 @@ if uploaded_file is not None:
             confidence = np.max(preds) * 100
 
             # 3. TENTUKAN LABEL
-            if confidence < 70:
+            if confidence < 60:
                 label = "irrelevant"
             else:
                 label = LABELS[str(np.argmax(preds))]

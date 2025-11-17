@@ -26,8 +26,10 @@ except Exception as e:
 # =====================================================
 # HAAR CASCADE (FACE + EYE)
 # =====================================================
-FACE_CASCADE = cv2.CascadeClassifier("haarcascade/haarcascade_frontalface_default.xml")
+FACE_CASCADE = cv2.CascadeClassifier(
+    "haarcascade/haarcascade_frontalface_default.xml")
 EYE_CASCADE = cv2.CascadeClassifier("haarcascade/haarcascade_eye.xml")
+
 
 def contains_eye(pil_img):
     img = np.array(pil_img)
@@ -43,6 +45,7 @@ def contains_eye(pil_img):
 # PREPROCESS GAMBAR UNTUK MODEL
 # =====================================================
 IMG_SIZE = (224, 224)
+
 
 def preprocess(img):
     img = img.resize(IMG_SIZE)
@@ -78,7 +81,8 @@ if uploaded_file is not None:
 
             # 1. CEK APAKAH GAMBAR MENGANDUNG MATA
             if not contains_eye(image):
-                st.warning("⚠ Gambar tidak relevan (tidak terdeteksi mata/wajah)")
+                st.warning(
+                    "⚠ Gambar tidak relevan (tidak terdeteksi mata/wajah)")
                 st.stop()
 
             # 2. PREDIKSI MODEL

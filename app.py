@@ -14,7 +14,7 @@ LABELS = {"0": "cataract", "1": "normal"}
 # =====================================================
 # LOAD MODEL
 # =====================================================
-MODEL_PATH = "models/final_model.keras"   # FIX
+MODEL_PATH = "models/model_best.keras"   # FIX
 model = None
 
 try:

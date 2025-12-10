@@ -3,6 +3,5 @@ keras
 numpy
 streamlit
 pillow
-scipy
 opencv-python
-plotly
+json

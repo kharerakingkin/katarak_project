@@ -63,7 +63,7 @@ body {
 # ================================
 # CONFIG
 # ================================
-MODEL_PATH = "models/cataract_vit_model.h5"
+MODEL_PATH = "models/cataract_vit_model.keras"
 LABEL_PATH = "labels.json"
 IMG_SIZE = (224, 224)
 

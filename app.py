@@ -5,18 +5,27 @@ import json
 import os
 import io
 
+# Mengatur konfigurasi halaman di awal
+st.set_page_config(
+    page_title="Cataract Detector",
+    page_icon="👁️",
+    layout="wide", # Menggunakan layout lebar
+    initial_sidebar_state="auto"
+)
+
 # ------------------------------------------------------------
 # Prefer tflite_runtime (lightweight) → fallback to tensorflow
 # ------------------------------------------------------------
+# [Kode import interpreter tetap sama, dihilangkan untuk ringkasan]
 Interpreter = None
 try:
     from tflite_runtime.interpreter import Interpreter
-    st.info("Using: tflite_runtime interpreter")
+    # st.info("Using: tflite_runtime interpreter") # Dihilangkan agar UI lebih bersih
 except Exception:
     try:
         import tensorflow as tf
         Interpreter = tf.lite.Interpreter
-        st.info("Using: tensorflow.lite Interpreter")
+        # st.info("Using: tensorflow.lite Interpreter") # Dihilangkan agar UI lebih bersih
     except Exception:
         Interpreter = None
 
@@ -44,11 +53,12 @@ if SELECTED_MODEL is None:
              "- cataract_model_float32.tflite")
     st.stop()
 
-st.success(f"Model otomatis terdeteksi → **{SELECTED_MODEL}**")
+# Menampilkan status model di sidebar agar UI utama bersih
+st.sidebar.success(f"Model: **{os.path.basename(SELECTED_MODEL)}** terdeteksi.")
 
 
 # ------------------------------------------------------------
-# Load labels
+# Load labels & Interpreter (Kode sama)
 # ------------------------------------------------------------
 LABEL_PATH = "tflite_models/labels.json"
 if os.path.exists(LABEL_PATH):
@@ -57,12 +67,9 @@ if os.path.exists(LABEL_PATH):
     labels = {int(k): v for k, v in raw_labels.items()}
 else:
     labels = {0: "cataract", 1: "normal"}
-    st.warning("labels.json tidak ditemukan. Menggunakan default 2 kelas.")
+    st.sidebar.warning("labels.json tidak ditemukan. Menggunakan default 2 kelas.")
 
 
-# ------------------------------------------------------------
-# Load TFLite Interpreter
-# ------------------------------------------------------------
 if Interpreter is None:
     st.error("Tidak dapat memuat interpreter TFLite (tflite-runtime / tensorflow).")
     st.stop()
@@ -81,25 +88,21 @@ output_details = interpreter.get_output_details()[0]
 
 
 # ------------------------------------------------------------
-# Preprocessing
+# Preprocessing & Prediction (Kode sama)
 # ------------------------------------------------------------
 IMG_SIZE = (224, 224)
 
 
 def preprocess(img: Image.Image):
     img = img.resize(IMG_SIZE)
-    arr = np.array(img).astype("float32") / 255.0  # MUST match training
+    arr = np.array(img).astype("float32") / 255.0
     arr = np.expand_dims(arr, axis=0)
     return arr
 
 
-# ------------------------------------------------------------
-# Prediction
-# ------------------------------------------------------------
 def predict_image(pil_img):
     arr = preprocess(pil_img)
 
-    # input quantization
     if input_details["dtype"] in [np.uint8, np.int8]:
         scale, zero = input_details["quantization"]
         arr = (arr / scale + zero).astype(input_details["dtype"])
@@ -109,7 +112,6 @@ def predict_image(pil_img):
 
     output_data = interpreter.get_tensor(output_details["index"])[0]
 
-    # dequantize
     if output_details["dtype"] in [np.uint8, np.int8]:
         scale, zero = output_details["quantization"]
         output_data = scale * (output_data.astype("float32") - zero)
@@ -118,31 +120,95 @@ def predict_image(pil_img):
 
 
 # ------------------------------------------------------------
-# UI (Responsive)
+# UI (MODIFIKASI UTAMA)
 # ------------------------------------------------------------
-st.title("👁 Cataract Detector — TFLite (Auto Model Select)")
-st.write("Unggah gambar mata untuk diprediksi menggunakan model MobileNetV3 + ViT-Tail (TFLite).")
 
-uploaded = st.file_uploader("Upload gambar mata", type=["jpg", "jpeg", "png"])
+# HEADER & DESKRIPSI
+st.markdown("""
+# 👁️ Cataract AI Detector
+Analisis cepat gambar mata menggunakan Model Hybrid **MobileNetV3 + ViT-Tail** yang telah dikuantisasi (TFLite).
+""")
 
-if uploaded:
-    img = Image.open(uploaded).convert("RGB")
-    st.image(img, caption="Gambar diunggah", use_column_width=True)
+st.markdown("---")
 
-    if st.button("🔍 Prediksi"):
-        with st.spinner("Menganalisa..."):
-            probs = predict_image(img)
-            pred = int(np.argmax(probs))
-            conf = float(np.max(probs)) * 100
-            label = labels.get(pred, str(pred))
+# TATA LETAK KOLOM UTAMA
+col_upload, col_result = st.columns([1, 1])
 
-        st.subheader(f"Hasil: **{label.upper()}**")
-        st.write(f"Confidence: {conf:.2f}%")
-        st.progress(int(conf))
+# --- KOLOM UPLOAD ---
+with col_upload:
+    st.markdown("### 🖼️ Unggah Gambar Mata")
+    uploaded = st.file_uploader(
+        "Pilih file gambar (.jpg, .jpeg, .png)",
+        type=["jpg", "jpeg", "png"],
+        accept_multiple_files=False,
+    )
 
-        st.write("📊 Probabilitas detail:")
-        for i, p in enumerate(probs):
-            st.write(f"- {labels.get(i, i)}: {p*100:.2f}%")
+    if uploaded:
+        img = Image.open(uploaded).convert("RGB")
+        # Menggunakan kolom yang lebih kecil untuk tampilan gambar agar tidak terlalu besar
+        st.image(img, caption="Gambar diunggah", width=350)
+        
+        # Tombol Prediksi diletakkan di bawah gambar yang sudah diupload
+        if st.button("🚀 MULAI PREDIKSI & ANALISIS", use_container_width=True, type="primary"):
+             st.session_state.run_prediction = True # Set state untuk memicu prediksi
 
-else:
-    st.info("Silakan unggah gambar terlebih dahulu.")
+    else:
+        st.info("Silakan unggah gambar mata (misal: close-up iris) untuk memulai analisis.")
+        st.session_state.run_prediction = False
+
+# --- KOLOM HASIL ---
+with col_result:
+    st.markdown("### 🩺 Hasil Diagnosis AI")
+    
+    # Cek apakah prediksi harus dijalankan
+    if uploaded and st.session_state.get('run_prediction', False):
+        with st.spinner("Menganalisa fitur visual mata dengan MobileNetV3 + ViT..."):
+            try:
+                probs = predict_image(img)
+                pred_index = int(np.argmax(probs))
+                conf = float(np.max(probs)) * 100
+                pred_label = labels.get(pred_index, str(pred_index))
+                
+                # Menentukan warna berdasarkan hasil
+                if 'cataract' in pred_label.lower():
+                    result_color = "red"
+                    emoji = "⚠️"
+                    message = "Diperlukan Konsultasi Dokter Spesialis!"
+                else:
+                    result_color = "green"
+                    emoji = "✅"
+                    message = "Saat ini terklasifikasi sebagai Normal."
+                
+                # TAMPILAN KARTU HASIL UTAMA
+                st.markdown(f"""
+                <div style='background-color: #f0f2f6; padding: 20px; border-radius: 10px; border-left: 5px solid {result_color};'>
+                    <p style='font-size: 18px; color: #555;'>Diagnosis AI:</p>
+                    <h1 style='color: {result_color}; margin-top: 0px;'>{emoji} {pred_label.upper()}</h1>
+                    <p style='font-weight: bold;'>Keyakinan (Confidence): <span style='color: {result_color};'>{conf:.2f}%</span></p>
+                    <p style='font-style: italic; font-size: 14px;'>{message}</p>
+                </div>
+                """, unsafe_allow_html=True)
+                
+                # BAR CHART UNTUK VISUALISASI PROBABILITAS
+                st.write("---")
+                st.markdown("#### 📊 Distribusi Probabilitas")
+                
+                # Siapkan data untuk bar chart
+                data = {'Label': [labels.get(i, str(i)) for i in range(len(probs))], 'Probabilitas (%)': probs * 100}
+                st.bar_chart(data, x='Label', y='Probabilitas (%)')
+
+            except Exception as e:
+                st.error(f"Terjadi kesalahan saat prediksi: {e}")
+        
+        # Reset state setelah prediksi selesai (untuk mencegah prediksi berulang yang tidak perlu)
+        st.session_state.run_prediction = False
+    
+    elif not uploaded:
+        st.warning("Menunggu unggahan gambar...")
+
+st.markdown("---")
+st.markdown("""
+<p style='font-size: 12px; text-align: center; color: #777;'>
+Model ini merupakan alat bantu screening awal dan BUKAN pengganti diagnosis medis profesional. 
+</p>
+""", unsafe_allow_html=True)

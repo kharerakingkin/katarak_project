@@ -53,7 +53,7 @@ st.success(f"Model otomatis terdeteksi → **{SELECTED_MODEL}**")
 LABEL_PATH = "tflite_models/labels.json"
 if os.path.exists(LABEL_PATH):
     with open(LABEL_PATH, "r") as f:
-        raw_labels = jdson.load(f)
+        raw_labels = json.load(f)
     labels = {int(k): v for k, v in raw_labels.items()}
 else:
     labels = {0: "cataract", 1: "normal"}

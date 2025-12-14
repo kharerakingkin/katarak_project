@@ -9,23 +9,20 @@ import io
 st.set_page_config(
     page_title="Cataract Detector",
     page_icon="👁️",
-    layout="wide", # Menggunakan layout lebar
+    layout="wide",
     initial_sidebar_state="auto"
 )
 
 # ------------------------------------------------------------
 # Prefer tflite_runtime (lightweight) → fallback to tensorflow
 # ------------------------------------------------------------
-# [Kode import interpreter tetap sama, dihilangkan untuk ringkasan]
 Interpreter = None
 try:
     from tflite_runtime.interpreter import Interpreter
-    # st.info("Using: tflite_runtime interpreter") # Dihilangkan agar UI lebih bersih
 except Exception:
     try:
         import tensorflow as tf
         Interpreter = tf.lite.Interpreter
-        # st.info("Using: tensorflow.lite Interpreter") # Dihilangkan agar UI lebih bersih
     except Exception:
         Interpreter = None
 
@@ -34,12 +31,11 @@ except Exception:
 # ------------------------------------------------------------
 MODEL_DIR = "tflite_models"
 CANDIDATES = [
-    "cataract_model_float16.tflite",   # PRIORITY 1
-    "cataract_model_float32.tflite",   # FALLBACK
+    "cataract_model_float16.tflite",
+    "cataract_model_float32.tflite",
 ]
 
 SELECTED_MODEL = None
-
 for fname in CANDIDATES:
     fpath = os.path.join(MODEL_DIR, fname)
     if os.path.exists(fpath):
@@ -47,18 +43,12 @@ for fname in CANDIDATES:
         break
 
 if SELECTED_MODEL is None:
-    st.error("❌ Tidak ada model TFLite yang ditemukan di folder `tflite_models/`.\n\n"
-             "Harap masukkan file:\n"
-             "- cataract_model_float16.tflite **atau**\n"
-             "- cataract_model_float32.tflite")
+    st.error("❌ Tidak ada model TFLite yang ditemukan di folder `tflite_models/`.")
     st.stop()
-
-# Menampilkan status model di sidebar agar UI utama bersih
 st.sidebar.success(f"Model: **{os.path.basename(SELECTED_MODEL)}** terdeteksi.")
 
-
 # ------------------------------------------------------------
-# Load labels & Interpreter (Kode sama)
+# Load labels
 # ------------------------------------------------------------
 LABEL_PATH = "tflite_models/labels.json"
 if os.path.exists(LABEL_PATH):
@@ -70,8 +60,11 @@ else:
     st.sidebar.warning("labels.json tidak ditemukan. Menggunakan default 2 kelas.")
 
 
+# ------------------------------------------------------------
+# Load TFLite Interpreter
+# ------------------------------------------------------------
 if Interpreter is None:
-    st.error("Tidak dapat memuat interpreter TFLite (tflite-runtime / tensorflow).")
+    st.error("Tidak dapat memuat interpreter TFLite.")
     st.stop()
 
 
@@ -88,7 +81,7 @@ output_details = interpreter.get_output_details()[0]
 
 
 # ------------------------------------------------------------
-# Preprocessing & Prediction (Kode sama)
+# Preprocessing & Prediction
 # ------------------------------------------------------------
 IMG_SIZE = (224, 224)
 
@@ -120,7 +113,7 @@ def predict_image(pil_img):
 
 
 # ------------------------------------------------------------
-# UI (MODIFIKASI UTAMA)
+# UI
 # ------------------------------------------------------------
 
 # HEADER & DESKRIPSI
@@ -145,12 +138,10 @@ with col_upload:
 
     if uploaded:
         img = Image.open(uploaded).convert("RGB")
-        # Menggunakan kolom yang lebih kecil untuk tampilan gambar agar tidak terlalu besar
         st.image(img, caption="Gambar diunggah", width=350)
         
-        # Tombol Prediksi diletakkan di bawah gambar yang sudah diupload
         if st.button("🚀 MULAI PREDIKSI & ANALISIS", use_container_width=True, type="primary"):
-             st.session_state.run_prediction = True # Set state untuk memicu prediksi
+             st.session_state.run_prediction = True
 
     else:
         st.info("Silakan unggah gambar mata (misal: close-up iris) untuk memulai analisis.")
@@ -160,47 +151,47 @@ with col_upload:
 with col_result:
     st.markdown("### 🩺 Hasil Diagnosis AI")
     
-    # Cek apakah prediksi harus dijalankan
     if uploaded and st.session_state.get('run_prediction', False):
-        with st.spinner("Menganalisa fitur visual mata dengan MobileNetV3 + ViT..."):
+        with st.spinner("Menganalisa fitur visual mata..."):
             try:
                 probs = predict_image(img)
                 pred_index = int(np.argmax(probs))
                 conf = float(np.max(probs)) * 100
                 pred_label = labels.get(pred_index, str(pred_index))
                 
-                # Menentukan warna berdasarkan hasil
+                # LOGIKA PENENTUAN HASIL DAN INTERPRETASI
                 if 'cataract' in pred_label.lower():
-                    result_color = "red"
-                    emoji = "⚠️"
-                    message = "Diperlukan Konsultasi Dokter Spesialis!"
+                    result_color = "#E33D3D"  # Merah Kuat
+                    emoji = "🚨"
+                    header_text = "TIDAK NORMAL (POTENSI KATARAK)"
+                    interpretation = "Model mendeteksi adanya kekeruhan lensa yang konsisten dengan Katarak. **Sangat dianjurkan** untuk segera konsultasi dan pemeriksaan lebih lanjut oleh Dokter Spesialis Mata (Ophthalmologist)."
                 else:
-                    result_color = "green"
+                    result_color = "#35A352"  # Hijau Kuat
                     emoji = "✅"
-                    message = "Saat ini terklasifikasi sebagai Normal."
+                    header_text = "NORMAL (SAAT INI)"
+                    interpretation = "Model mengklasifikasikan gambar mata sebagai Normal. Tidak ada indikasi Katarak yang terdeteksi secara otomatis oleh AI. Meskipun demikian, pemeriksaan rutin oleh profesional tetap penting."
                 
                 # TAMPILAN KARTU HASIL UTAMA
                 st.markdown(f"""
-                <div style='background-color: #f0f2f6; padding: 20px; border-radius: 10px; border-left: 5px solid {result_color};'>
-                    <p style='font-size: 18px; color: #555;'>Diagnosis AI:</p>
-                    <h1 style='color: {result_color}; margin-top: 0px;'>{emoji} {pred_label.upper()}</h1>
-                    <p style='font-weight: bold;'>Keyakinan (Confidence): <span style='color: {result_color};'>{conf:.2f}%</span></p>
-                    <p style='font-style: italic; font-size: 14px;'>{message}</p>
+                <div style='background-color: #f0f2f6; padding: 25px; border-radius: 12px; border: 2px solid {result_color};'>
+                    <h2 style='color: {result_color}; margin-top: 0px;'>{emoji} {header_text}</h2>
+                    <p style='font-size: 16px;'>Keyakinan Model: <b>{conf:.2f}%</b></p>
+                    <p style='font-size: 14px; margin-top: 15px;'>{interpretation}</p>
                 </div>
                 """, unsafe_allow_html=True)
                 
-                # BAR CHART UNTUK VISUALISASI PROBABILITAS
+                # BAGIAN DISKLAIMER MEDIS TAMBAHAN
                 st.write("---")
+                st.markdown(f"**❗ Peringatan Medis:** Hasil dengan keyakinan di bawah 80% harus diperlakukan dengan sangat hati-hati.")
+
+                # VISUALISASI PROBABILITAS
                 st.markdown("#### 📊 Distribusi Probabilitas")
-                
-                # Siapkan data untuk bar chart
-                data = {'Label': [labels.get(i, str(i)) for i in range(len(probs))], 'Probabilitas (%)': probs * 100}
+                data = {'Label': [labels.get(i, str(i)).upper() for i in range(len(probs))], 'Probabilitas (%)': probs * 100}
                 st.bar_chart(data, x='Label', y='Probabilitas (%)')
 
             except Exception as e:
                 st.error(f"Terjadi kesalahan saat prediksi: {e}")
         
-        # Reset state setelah prediksi selesai (untuk mencegah prediksi berulang yang tidak perlu)
         st.session_state.run_prediction = False
     
     elif not uploaded:
@@ -209,6 +200,10 @@ with col_result:
 st.markdown("---")
 st.markdown("""
 <p style='font-size: 12px; text-align: center; color: #777;'>
-Model ini merupakan alat bantu screening awal dan BUKAN pengganti diagnosis medis profesional. 
+Model ini berfungsi sebagai alat *screening* awal dan **BUKAN** pengganti diagnosis, pemeriksaan, atau konsultasi medis oleh Dokter Spesialis Mata (Ophthalmologist). Keputusan pengobatan harus selalu didasarkan pada penilaian profesional.
+</p>
+<p style='font-size: 12px; text-align: center; color: #555; margin-top: 10px;'>
+<hr style='border-top: 1px solid #ddd; margin: 5px 0;'>
+**Pengembang:** Kharera Prabandaru (4611421136)
 </p>
 """, unsafe_allow_html=True)
